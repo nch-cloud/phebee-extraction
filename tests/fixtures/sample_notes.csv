@@ -1,0 +1,4 @@
+note_id,text,patient_id
+test_001,"Patient presents with fever and cough.",P001
+test_002,"Chronic headaches, family history of migraines.",P002
+test_003,"Developmental delay noted at 18 months.",P003

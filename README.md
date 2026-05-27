@@ -1,2 +1,328 @@
-# phebee-extraction
-Local term extraction pipeline for the PheBee ecosystem
+# PheBee Extraction (Local)
+
+[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](LICENSE)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+
+Lightweight, local alternative to the enterprise AWS PheBee extraction pipeline. Process clinical notes on a single machine without AWS infrastructure.
+
+**What is phenotype extraction?** Automated identification and extraction of clinical phenotypes (observable characteristics like symptoms, diseases, lab findings) from unstructured clinical notes, mapped to standardized ontology terms (e.g., Human Phenotype Ontology - HPO).
+
+## Overview
+
+PheBee Extraction orchestrates Docker containers to extract phenotype annotations from clinical notes. Supports:
+
+- **Multiple input formats**: JSON, JSONL, Parquet, CSV
+- **Tool chaining**: Run extraction → context classification in sequence
+- **Batch processing**: Process large datasets in manageable chunks
+- **GPU support**: Optional GPU acceleration for compatible models
+- **Zero AWS dependencies**: Runs entirely on local machine
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.8+
+- Docker Engine 20.10+
+- NVIDIA Docker runtime (for GPU support)
+
+### Installation
+
+```bash
+# Clone repository
+git clone https://github.com/nch-cloud/phebee-extraction.git
+cd phebee-extraction
+
+# Install with uv (recommended)
+uv sync
+
+# Or with pip
+pip install -e .
+```
+
+If you don't have `uv` installed:
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### Basic Usage
+
+**PheBee format (default)** - Ready for PheBee bulk import:
+
+```bash
+# Single extraction tool
+python extract.py \
+  --input examples/sample_notes.jsonl \
+  --output results/ \
+  --docker-images fasthpocr:batch-latest \
+  --project-id my-project
+
+# Tool chaining (extraction + context)
+python extract.py \
+  --input notes.jsonl \
+  --output results/ \
+  --docker-images fasthpocr:batch-latest,phenocontext:batch-latest \
+  --project-id my-project
+
+# GPU-enabled extraction
+python extract.py \
+  --input notes.parquet \
+  --output results/ \
+  --docker-images phenobert:batch-latest \
+  --project-id my-project \
+  --gpu \
+  --batch-size 500
+```
+
+**Flat format** - Note-centric output for exploration, not importable to PheBee:
+
+```bash
+python extract.py \
+  --input notes.jsonl \
+  --output results/ \
+  --docker-images fasthpocr:batch-latest \
+  --flat-format
+```
+
+## CLI Reference
+
+### Required Arguments
+
+- `--input`: Input file path (JSON/JSONL/Parquet/CSV)
+- `--output`: Output directory for results
+- `--docker-images`: Comma-separated list of Docker images for pipeline
+- `--project-id`: PheBee project identifier (required unless --flat-format specified)
+
+### Output Format Options
+
+- `--flat-format`: Output note-centric format instead of PheBee format
+- `--subject-id-column`: Input column name for subject ID (default: subject_id)
+- `--batch-id`: PheBee batch identifier (default: 0)
+
+**Note on Provenance**: The `evidence_creator_id` and `evidence_creator_name` are automatically derived from the Docker image names/tags used in the pipeline. The `evidence_creator_digest` field contains the SHA256 digests for reproducibility. For tool chaining, both fields use `+` as a separator (e.g., `evidence_creator_id: "fasthpocr:latest+phenocontext:latest"` and `evidence_creator_digest: "sha256:abc...+sha256:def..."`).
+
+### Processing Options
+
+- `--batch-size`: Notes per batch (default: 1000)
+- `--gpu`: Enable GPU support
+- `--temp-dir`: Custom temporary directory
+- `--keep-temp`: Keep temporary files for debugging
+- `--input-format`: Force format (auto|json|jsonl|parquet|csv)
+- `--id-column`: Column name for note IDs in CSV/Parquet (default: note_id)
+- `--text-column`: Column name for note text in CSV/Parquet (default: text)
+- `--continue-on-error`: Continue if batch fails
+- `--docker-timeout`: Maximum seconds per batch stage (default: 3600)
+
+## Input Formats
+
+**For PheBee format output**, your input must include `subject_id`:
+
+```jsonl
+{"note_id": "note_001", "subject_id": "patient-001", "text": "Patient presents with fever..."}
+{"note_id": "note_002", "subject_id": "patient-001", "text": "Chronic headaches..."}
+```
+
+**For flat format output**, only `note_id` and `text` are required:
+
+### JSONL (Recommended)
+```jsonl
+{"note_id": "note_001", "text": "Patient presents with fever..."}
+{"note_id": "note_002", "text": "Chronic headaches..."}
+```
+
+### JSON
+```json
+{
+  "records": [
+    {"note_id": "note_001", "text": "Patient presents with fever..."},
+    {"note_id": "note_002", "text": "Chronic headaches..."}
+  ]
+}
+```
+
+### CSV
+```csv
+note_id,text
+note_001,"Patient presents with fever..."
+note_002,"Chronic headaches..."
+```
+
+### Parquet
+Use `--id-column` and `--text-column` to specify column names.
+
+## Output Format
+
+### PheBee Format (Default)
+
+Output is written as JSONL (`aggregated.jsonl`) with one record per annotation, ready for PheBee bulk import:
+
+```jsonl
+{"project_id": "my-project", "project_subject_id": "patient-001", "term_iri": "http://purl.obolibrary.org/obo/HP_0001945", "evidence": [{...}], "row_num": 1, "batch_id": 0}
+{"project_id": "my-project", "project_subject_id": "patient-001", "term_iri": "http://purl.obolibrary.org/obo/HP_0012735", "evidence": [{...}], "row_num": 2, "batch_id": 0}
+```
+
+Each line represents one (subject, term) pair with associated evidence. Multiple annotations of the same term for the same subject appear on separate lines.
+
+### Flat Format (--flat-format)
+
+Output is written as JSONL (`aggregated.jsonl`) with one record per note:
+
+```jsonl
+{"note_id": "note_001", "text": "...", "annotations": [...], "error": null}
+{"note_id": "note_002", "text": "...", "annotations": [...], "error": null}
+{"_metadata": {"execution_name": "local-extraction-...", "total_records": 2, "tools_used": ["fasthpocr:batch-latest"], "processing_timestamp": "2026-05-26T10:00:00Z", "status": "success"}}
+```
+
+Final line contains metadata with `_metadata` key (PheBee format has no metadata line).
+
+## Docker Container Interface
+
+Extraction containers must follow the [INTERFACE.md](INTERFACE.md) specification:
+
+- Accept `INPUT_S3_URI` and `OUTPUT_S3_URI` environment variables
+- Read input JSON from mounted volume
+- Write output JSON with annotations
+- Exit with code 0 on success
+
+See [INTERFACE.md](INTERFACE.md) for complete specification.
+
+## Tool Chaining
+
+Chain multiple tools by providing comma-separated Docker images:
+
+```bash
+python extract.py \
+  --input notes.jsonl \
+  --output results/ \
+  --docker-images tool1:latest,tool2:latest,tool3:latest \
+  --project-id my-project \
+  --evidence-creator-id my-extractor
+```
+
+Each batch goes through all pipeline stages sequentially. Common pattern:
+1. **Extraction**
+2. **Context**
+
+## PheBee Import Workflow
+
+Extract directly to PheBee format (one step):
+
+```bash
+# Extract phenotypes ready for PheBee bulk import
+python extract.py \
+  --input notes.jsonl \
+  --output results/ \
+  --docker-images fasthpocr:batch-latest,phenocontext:batch-latest \
+  --project-id my-phebee-project
+
+# Upload to PheBee (example with S3)
+aws s3 cp results/aggregated.jsonl s3://my-bucket/evidence.jsonl
+# Then trigger PheBee bulk import via API/console
+```
+
+**Required Input Fields:**
+
+Your input notes must include `subject_id`:
+
+```jsonl
+{"note_id": "n1", "subject_id": "patient-001", "encounter_id": "enc-001", "text": "..."}
+{"note_id": "n2", "subject_id": "patient-001", "encounter_id": "enc-002", "text": "..."}
+```
+
+## Examples
+
+See [examples/](examples/) directory for:
+- [sample_notes.jsonl](examples/sample_notes.jsonl) - Example input (no subject_id, use with --flat-format)
+- [sample_notes_with_subjects.jsonl](examples/sample_notes_with_subjects.jsonl) - Example input with subject_id for PheBee format
+- [sample_phebee_output.jsonl](examples/sample_phebee_output.jsonl) - Example PheBee format output
+- [sample_flat_output.jsonl](examples/sample_flat_output.jsonl) - Example flat format output
+
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run pytest tests/ -v
+
+# Run specific test files
+uv run pytest tests/test_extract.py -v           # Extract.py unit tests (37 tests)
+uv run pytest tests/test_integration.py -v       # Integration tests (11 tests)
+
+# Run with coverage
+uv run pytest tests/ --cov=. --cov-report=term-missing
+
+# Run ruff linter
+uv run ruff check .
+
+# Run ruff formatter
+uv run ruff format .
+```
+
+### Project Structure
+
+```
+extract.py              # Main orchestrator script
+pyproject.toml          # Project metadata and dependencies
+INTERFACE.md           # Docker container interface spec
+examples/              # Sample data
+tests/                 # Unit and integration tests (48 tests)
+  test_extract.py      # Extract.py unit tests (37 tests)
+  test_integration.py  # Integration tests with Docker (11 tests)
+```
+
+## Design Philosophy
+
+- **Minimal dependencies**: Simple Python scripts, no complex frameworks
+- **Single machine**: Designed for 10K-100K notes on one machine
+- **User responsibility**: GPU setup, Docker configuration handled by user
+- **Simple chunking**: No subject grouping, just batch by size
+
+## Related Projects
+
+- [phebee](https://github.com/nch-cloud/phebee) - PheBee storage/query system
+- [phebee-tool-wrappers](https://github.com/nch-cloud/phebee-tool-wrappers) - Reference extraction tool implementations
+
+## Troubleshooting
+
+**Docker daemon not running:**
+```bash
+# Mac: Start Docker Desktop
+# Linux: sudo systemctl start docker
+```
+
+**Permission denied:**
+```bash
+# Add user to docker group (Linux)
+sudo usermod -aG docker $USER
+# Log out and back in
+```
+
+**GPU not available:**
+- Install [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+- Script will fail gracefully if GPU unavailable
+
+**Module not found:**
+```bash
+uv sync  # or: pip install -e .
+```
+
+## Known Limitations
+
+- Single machine processing (no distributed execution)
+- No resume capability (restart required on crash)
+- Sequential batch processing (no parallelization)
+- Entire input loaded into memory during batching
+
+## License
+
+BSD 3-Clause License - see [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+Issues and pull requests welcome. For major changes, please open an issue first to discuss what you'd like to change.
+
+Run tests and linting before submitting:
+```bash
+uv run pytest tests/ -v
+uv run ruff check .
+```
