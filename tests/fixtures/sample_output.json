@@ -1,0 +1,40 @@
+{
+  "records": [
+    {
+      "note_id": "test_001",
+      "text": "Patient presents with fever and cough.",
+      "annotations": [
+        {
+          "start": 22,
+          "end": 27,
+          "text": "fever",
+          "term_id": "HP:0001945",
+          "label": "Fever",
+          "ontology": "hpo"
+        },
+        {
+          "start": 32,
+          "end": 37,
+          "text": "cough",
+          "term_id": "HP:0012735",
+          "label": "Cough",
+          "ontology": "hpo"
+        }
+      ],
+      "error": null
+    }
+  ],
+  "run_metadata": {
+    "run_id": "550e8400-e29b-41d4-a716-446655440000",
+    "annotator": "MockExtractor",
+    "annotator_version": "v0.0.1",
+    "timestamp": "2026-05-23T10:00:00Z",
+    "models": {
+      "phenotype": "5b9339d49ae7ce047984b7459df596bc7be03e7bfca8208a3ca290de0b44a755",
+      "context": null
+    },
+    "runtime_ms": 100,
+    "status": "success",
+    "error_message": null
+  }
+}

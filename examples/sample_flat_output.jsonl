@@ -1,0 +1,24 @@
+{
+  "note_id": "example_001",
+  "text": "Patient presents with fever and cough.",
+  "annotations": [
+    {
+      "start": 19,
+      "end": 24,
+      "text": "fever",
+      "term_id": "HP:0001945",
+      "label": "Fever",
+      "ontology": "hpo"
+    },
+    {
+      "start": 29,
+      "end": 34,
+      "text": "cough",
+      "term_id": "HP:0012735",
+      "label": "Cough",
+      "ontology": "hpo"
+    }
+  ],
+  "error": null
+}
+{"_metadata": {"execution_name": "local-extraction-20260526-120000", "total_records": 1, "tools_used": ["fasthpocr:batch-latest"], "processing_timestamp": "2026-05-26T12:00:00Z", "batch_count": 1, "status": "success"}}

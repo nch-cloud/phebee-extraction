@@ -1,0 +1,16 @@
+{
+  "records": [
+    {
+      "note_id": "test_001",
+      "text": "Patient presents with fever and cough."
+    },
+    {
+      "note_id": "test_002",
+      "text": "Chronic headaches, family history of migraines."
+    },
+    {
+      "note_id": "test_003",
+      "text": "Developmental delay noted at 18 months."
+    }
+  ]
+}
