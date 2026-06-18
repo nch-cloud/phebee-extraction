@@ -314,6 +314,9 @@ def load_input_data(
         if text_column not in df.columns:
             raise ValueError(f"Column '{text_column}' not found in Parquet file")
 
+        # Convert ID columns to strings (they may be numeric in Parquet)
+        df[id_column] = df[id_column].astype(str)
+
         # Convert to records, renaming columns if needed
         df = df.rename(columns={id_column: "note_id", text_column: "text"})
         records = df.to_dict("records")
@@ -325,12 +328,32 @@ def load_input_data(
         if text_column not in df.columns:
             raise ValueError(f"Column '{text_column}' not found in CSV file")
 
+        # Convert ID columns to strings (they may be numeric in CSV)
+        df[id_column] = df[id_column].astype(str)
+
         # Convert to records, renaming columns if needed
         df = df.rename(columns={id_column: "note_id", text_column: "text"})
         records = df.to_dict("records")
 
     else:
         raise ValueError(f"Unsupported format: {format}")
+
+    # Convert common ID fields to strings (they may be numeric in input data)
+    # This ensures compatibility with Docker container JSON schema validation
+    id_fields = [
+        "note_id",
+        "subject_id",
+        "pat_id",
+        "mrn",
+        "encounter_id",
+        "enc_id",
+        "note_csn_id",
+        "raw_note_id",
+    ]
+    for record in records:
+        for field in id_fields:
+            if field in record and record[field] is not None:
+                record[field] = str(record[field])
 
     logger.info(f"Loaded {len(records)} records")
     return records
@@ -561,6 +584,40 @@ def run_single_stage(
         }
 
 
+def merge_original_fields(input_path: str, output_path: str) -> None:
+    """
+    Merge original input fields back into output records.
+
+    Docker containers may not preserve all input fields (subject_id, encounter_id, etc.).
+    This function merges them back based on note_id matching.
+    """
+    # Read original input
+    with open(input_path) as f:
+        input_data = json.load(f)
+
+    # Read container output
+    with open(output_path) as f:
+        output_data = json.load(f)
+
+    # Create lookup of original records by note_id
+    original_by_id = {rec["note_id"]: rec for rec in input_data["records"]}
+
+    # Merge fields back into output records
+    for output_rec in output_data["records"]:
+        note_id = output_rec.get("note_id")
+        if note_id and note_id in original_by_id:
+            original = original_by_id[note_id]
+            # Merge all original fields except those already in output
+            # (output takes precedence for note_id, text, annotations, error)
+            for key, value in original.items():
+                if key not in output_rec:
+                    output_rec[key] = value
+
+    # Write merged output back
+    with open(output_path, "w") as f:
+        json.dump(output_data, f, indent=2)
+
+
 def run_batch_pipeline(ctx: ExecutionContext, batch: BatchInfo, progress: ProgressTracker) -> None:
     """Execute all pipeline stages for a single batch"""
     batch.status = "running"
@@ -590,7 +647,9 @@ def run_batch_pipeline(ctx: ExecutionContext, batch: BatchInfo, progress: Progre
                 raise BatchProcessingError(batch, result["error"])
             return
 
-    # All stages succeeded
+    # All stages succeeded - merge original fields back into output
+    merge_original_fields(batch.input_path, output_path)
+
     batch.status = "success"
     batch.runtime_ms = int((time.time() - batch_start_time) * 1000)
     logger.info(f"Batch {batch.batch_id} completed successfully in {batch.runtime_ms}ms")
@@ -707,6 +766,25 @@ def record_to_phebee_format(record: Dict[str, Any], ctx: ExecutionContext) -> Li
             logger.warning(f"Annotation in note {note_id} missing term_id, skipping")
             continue
 
+        # Get span positions (support multiple field name variants)
+        # Use explicit None checks to handle start=0 correctly
+        span_start = annotation.get("start")
+        if span_start is None:
+            span_start = annotation.get("span_start")
+        if span_start is None:
+            span_start = annotation.get("begin")
+
+        span_end = annotation.get("end")
+        if span_end is None:
+            span_end = annotation.get("span_end")
+
+        if span_start is None or span_end is None:
+            logger.warning(
+                f"Annotation in note {note_id} missing span positions (tried 'start'/'end', "
+                f"'span_start'/'span_end', 'begin'), skipping. Available fields: {list(annotation.keys())}"
+            )
+            continue
+
         # Convert contexts integers to floats
         contexts = annotation.get("contexts", {})
         contexts_floats = {
@@ -747,8 +825,8 @@ def record_to_phebee_format(record: Dict[str, Any], ctx: ExecutionContext) -> Li
             "note_type": record.get("note_type"),
             "provider_type": record.get("provider_type"),
             "author_specialty": record.get("author_specialty"),
-            "span_start": annotation["start"],
-            "span_end": annotation["end"],
+            "span_start": int(span_start),
+            "span_end": int(span_end),
             "contexts": contexts_floats,
         }
 
