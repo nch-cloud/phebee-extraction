@@ -109,8 +109,8 @@ docker build -f Dockerfile.mock -t phebee-mock-extractor:test .
 # Run
 docker run --rm \
   -v $(pwd)/data:/data \
-  -e INPUT_S3_URI=/data/input.json \
-  -e OUTPUT_S3_URI=/data/output.json \
+  -e INPUT_URI=/data/input.json \
+  -e OUTPUT_URI=/data/output.json \
   phebee-mock-extractor:test
 ```
 
@@ -174,8 +174,8 @@ docker build -f Dockerfile.mock-context -t phebee-mock-context:test .
 # Run (requires input with existing annotations)
 docker run --rm \
   -v $(pwd)/data:/data \
-  -e INPUT_S3_URI=/data/annotations.json \
-  -e OUTPUT_S3_URI=/data/with_contexts.json \
+  -e INPUT_URI=/data/annotations.json \
+  -e OUTPUT_URI=/data/with_contexts.json \
   phebee-mock-context:test
 ```
 
@@ -186,13 +186,13 @@ Test extraction → context pipeline:
 ```bash
 # Manual chaining
 docker run --rm -v $(pwd)/data:/data \
-  -e INPUT_S3_URI=/data/input.json \
-  -e OUTPUT_S3_URI=/data/stage1.json \
+  -e INPUT_URI=/data/input.json \
+  -e OUTPUT_URI=/data/stage1.json \
   phebee-mock-extractor:test
 
 docker run --rm -v $(pwd)/data:/data \
-  -e INPUT_S3_URI=/data/stage1.json \
-  -e OUTPUT_S3_URI=/data/final.json \
+  -e INPUT_URI=/data/stage1.json \
+  -e OUTPUT_URI=/data/final.json \
   phebee-mock-context:test
 
 # Or use extract.py
@@ -226,9 +226,10 @@ extract.py ← Reads output ← Aggregates → JSONL
 - No copying needed - shared filesystem
 
 **2. Environment Variables**
-- `INPUT_S3_URI=/data/batch_input.json` tells container where to read
-- `OUTPUT_S3_URI=/data/batch_output.json` tells container where to write
-- Despite "S3_URI" name, local paths work (AWS compatibility)
+- `INPUT_URI=/data/batch_input.json` tells container where to read
+- `OUTPUT_URI=/data/batch_output.json` tells container where to write
+- `extract.py` also sets the legacy `INPUT_S3_URI`/`OUTPUT_S3_URI` names (same values) for older images; the mocks accept either pair
+- Local paths and URIs both work
 
 **3. INTERFACE.md Compliance**
 - Mock tools follow same spec as real extraction tools

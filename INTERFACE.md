@@ -21,10 +21,18 @@ The container **MUST** accept these environment variables:
 
 | Variable | Required | Description | Example |
 |----------|----------|-------------|---------|
-| `INPUT_S3_URI` | Yes | Location of input batch file (local path or S3 URI) | `/data/input.json` or `s3://bucket/batches/batch_000001.json` |
-| `OUTPUT_S3_URI` | Yes | Location to write results (local path or S3 URI) | `/data/output.json` or `s3://bucket/results/batch_000001.json` |
+| `INPUT_URI` | Yes | Location of input batch file (local path or URI) | `/data/input.json` or `s3://bucket/batches/batch_000001.json` |
+| `OUTPUT_URI` | Yes | Location to write results (local path or URI) | `/data/output.json` or `s3://bucket/results/batch_000001.json` |
+| `INPUT_S3_URI` | Legacy | Deprecated alias for `INPUT_URI` | same as `INPUT_URI` |
+| `OUTPUT_S3_URI` | Legacy | Deprecated alias for `OUTPUT_URI` | same as `OUTPUT_URI` |
 
-**Note:** Despite the `S3_URI` naming for compatibility with AWS pipelines, these variables accept both local file paths and S3 URIs. For local extraction, use mounted volume paths like `/data/input.json`. Containers should detect the format and handle accordingly.
+**Variable names:** `INPUT_S3_URI` and `OUTPUT_S3_URI` are historical names from the AWS pipeline. The neutral `INPUT_URI` and `OUTPUT_URI` are the preferred names going forward. During the transition:
+
+- **Orchestrators** (including this repo's `extract.py`) set **both** pairs, with identical values.
+- **Containers** should read `INPUT_URI`/`OUTPUT_URI` first and fall back to `INPUT_S3_URI`/`OUTPUT_S3_URI` if they are not set. Existing containers that only read the legacy names continue to work.
+- The legacy names are deprecated and may be removed in a future interface version.
+
+Both pairs accept local file paths as well as S3 URIs, despite the `S3` in the legacy names. For local extraction, orchestrators pass mounted volume paths like `/data/input.json`. Containers should detect the format and handle it accordingly.
 
 ### Docker Run Examples
 
@@ -32,6 +40,8 @@ The container **MUST** accept these environment variables:
 ```bash
 docker run --rm \
   -v /local/data:/data \
+  -e INPUT_URI=/data/input.json \
+  -e OUTPUT_URI=/data/output.json \
   -e INPUT_S3_URI=/data/input.json \
   -e OUTPUT_S3_URI=/data/output.json \
   fasthpocr:batch-latest
@@ -41,6 +51,8 @@ docker run --rm \
 ```bash
 docker run --rm --gpus all \
   -v /local/data:/data \
+  -e INPUT_URI=/data/input.json \
+  -e OUTPUT_URI=/data/output.json \
   -e INPUT_S3_URI=/data/input.json \
   -e OUTPUT_S3_URI=/data/output.json \
   phenobert:batch-latest
@@ -49,6 +61,8 @@ docker run --rm --gpus all \
 **AWS (S3):**
 ```bash
 docker run --rm \
+  -e INPUT_URI=s3://mybucket/runs/exec-123/batches/batch_000001.json \
+  -e OUTPUT_URI=s3://mybucket/runs/exec-123/results/batch_000001_result.json \
   -e INPUT_S3_URI=s3://mybucket/runs/exec-123/batches/batch_000001.json \
   -e OUTPUT_S3_URI=s3://mybucket/runs/exec-123/results/batch_000001_result.json \
   -e AWS_DEFAULT_REGION=us-east-2 \

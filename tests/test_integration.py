@@ -539,8 +539,15 @@ def test_output_validation(mock_extractor_image, sample_input_file, temp_workspa
 # ============================================================================
 
 
-def test_mock_extractor_directly(tmp_path):
-    """Test mock extractor script directly (without Docker)"""
+@pytest.mark.parametrize(
+    "input_var,output_var",
+    [
+        ("INPUT_URI", "OUTPUT_URI"),
+        ("INPUT_S3_URI", "OUTPUT_S3_URI"),  # legacy names
+    ],
+)
+def test_mock_extractor_directly(tmp_path, input_var, output_var):
+    """Test mock extractor script directly (without Docker), with neutral and legacy env names"""
     # Create input
     input_file = tmp_path / "input.json"
     with open(input_file, "w") as f:
@@ -548,10 +555,10 @@ def test_mock_extractor_directly(tmp_path):
 
     output_file = tmp_path / "output.json"
 
-    # Run mock extractor
-    env = os.environ.copy()
-    env["INPUT_S3_URI"] = str(input_file)
-    env["OUTPUT_S3_URI"] = str(output_file)
+    # Run mock extractor with only one pair of names set
+    env = {k: v for k, v in os.environ.items() if "_URI" not in k}
+    env[input_var] = str(input_file)
+    env[output_var] = str(output_file)
 
     result = subprocess.run(
         [sys.executable, "tests/mock_extractor.py"],

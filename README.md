@@ -112,6 +112,32 @@ python extract.py \
 - `--continue-on-error`: Continue if batch fails
 - `--docker-timeout`: Maximum seconds per batch stage (default: 3600)
 
+### Running the Stages Separately
+
+The default command runs the whole pipeline. Two further commands expose the stages on their own, so a different scheduler (a cloud batch service, Slurm, Kubernetes, ...) can run the containers while reusing the batching and output logic:
+
+```bash
+# 1. Split notes into batch files (writes batch_NNNNNN_input.json + manifest.json)
+python extract.py split --input notes.csv --output-dir batches/ \
+  --id-column note_id --text-column note_text --batch-size 1000
+
+# 2. Run each batch through the container(s) with your scheduler of choice.
+#    Each container reads INPUT_URI and writes OUTPUT_URI (see INTERFACE.md).
+
+# 3. Convert the tool outputs to PheBee JSONL
+python extract.py transform \
+  --input batches/batch_000001_output.json batches/batch_000002_output.json \
+  --original-input batches/batch_000001_input.json batches/batch_000002_input.json \
+  --output evidence.jsonl --project-id my-project --subject-id-column mrn \
+  --image-ref clinphen:latest@sha256:0da85be...
+```
+
+`transform` notes:
+- `--original-input` merges fields the tool dropped (e.g. `subject_id`) back from the batch inputs; list one file per `--input`, in the same order.
+- `--image-ref` supplies the provenance that `run` captures automatically. Pass the full `name:tag@sha256:...` reference for each tool in pipeline order.
+- `--start-row-num` lets you write one part file per batch with non-overlapping `row_num` values.
+- `--flat-format` produces the note-centric format instead; `--project-id` is then not required.
+
 ## Input Formats
 
 **For PheBee format output**, your input must include `subject_id`:
@@ -178,7 +204,7 @@ Final line contains metadata with `_metadata` key (PheBee format has no metadata
 
 Extraction containers must follow the [INTERFACE.md](INTERFACE.md) specification:
 
-- Accept `INPUT_S3_URI` and `OUTPUT_S3_URI` environment variables
+- Accept `INPUT_URI` and `OUTPUT_URI` environment variables (local paths or URIs). The legacy `INPUT_S3_URI`/`OUTPUT_S3_URI` names are also set for compatibility with older images
 - Read input JSON from mounted volume
 - Write output JSON with annotations
 - Exit with code 0 on success
@@ -245,11 +271,12 @@ See [examples/](examples/) directory for:
 uv run pytest tests/ -v
 
 # Run specific test files
-uv run pytest tests/test_extract.py -v           # Extract.py unit tests (37 tests)
-uv run pytest tests/test_integration.py -v       # Integration tests (11 tests)
+uv run pytest tests/test_extract.py -v           # Unit tests (38 tests)
+uv run pytest tests/test_stages.py -v            # Runner / split / transform tests (14 tests)
+uv run pytest tests/test_integration.py -v       # Integration tests with Docker (12 tests)
 
 # Run with coverage
-uv run pytest tests/ --cov=. --cov-report=term-missing
+uv run pytest tests/ --cov=phebee_extraction --cov-report=term-missing
 
 # Run ruff linter
 uv run ruff check .
@@ -261,14 +288,27 @@ uv run ruff format .
 ### Project Structure
 
 ```
-extract.py              # Main orchestrator script
-pyproject.toml          # Project metadata and dependencies
-INTERFACE.md           # Docker container interface spec
-examples/              # Sample data
-tests/                 # Unit and integration tests (48 tests)
-  test_extract.py      # Extract.py unit tests (37 tests)
-  test_integration.py  # Integration tests with Docker (11 tests)
+extract.py                # Command-line entry point (thin wrapper around the package)
+phebee_extraction/        # Implementation, one module per pipeline stage
+  loading.py              #   read notes from JSON/JSONL/CSV/Parquet
+  batching.py             #   split notes into batch files, per-stage paths
+  interface.py            #   the container contract (INTERFACE.md): files, env vars
+  runner.py               #   StageRunner protocol: how one stage gets executed
+  docker_runner.py        #   StageRunner implementation on local Docker
+  transform.py            #   tool output -> PheBee or flat JSONL
+  pipeline.py             #   local end-to-end orchestration
+  cli.py                  #   run / split / transform commands
+  models.py               #   BatchInfo and exceptions
+pyproject.toml            # Project metadata and dependencies
+INTERFACE.md              # Docker container interface spec
+examples/                 # Sample data
+tests/                    # Unit and integration tests (64 tests)
+  test_extract.py         # Unit tests (38 tests)
+  test_stages.py          # Runner protocol, split, transform (14 tests, no Docker)
+  test_integration.py     # Integration tests with Docker (12 tests)
 ```
+
+Only `docker_runner` depends on Docker. Everything else is reusable by other orchestrators, which supply their own `StageRunner` (see `runner.py`) or drive the stages from the command line with `split` and `transform`. [ARCHITECTURE.md](ARCHITECTURE.md) describes the pipeline model and the integration points in detail.
 
 ## Design Philosophy
 

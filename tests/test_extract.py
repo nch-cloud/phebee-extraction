@@ -585,6 +585,20 @@ def test_get_stage_paths_single_stage(tmp_path):
     assert "batch_000001_output.json" in output_path
 
 
+def test_build_container_environment_sets_neutral_and_legacy_names(tmp_path):
+    """Both neutral and legacy env var pairs are set, with identical in-container paths"""
+    env = extract.build_container_environment(
+        str(tmp_path / "batch_000001_stage1.json"), str(tmp_path / "batch_000001_output.json")
+    )
+
+    assert env == {
+        "INPUT_URI": "/data/batch_000001_stage1.json",
+        "OUTPUT_URI": "/data/batch_000001_output.json",
+        "INPUT_S3_URI": "/data/batch_000001_stage1.json",
+        "OUTPUT_S3_URI": "/data/batch_000001_output.json",
+    }
+
+
 def test_get_stage_paths_multi_stage(tmp_path):
     """Test stage path determination for multi-stage pipeline"""
     batch = extract.BatchInfo(

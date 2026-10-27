@@ -53,12 +53,15 @@ def extract_annotations(text):
 
 def main():
     # Read environment variables
-    input_path = os.environ.get("INPUT_S3_URI")
-    output_path = os.environ.get("OUTPUT_S3_URI")
+    # Neutral names take precedence; INPUT_S3_URI/OUTPUT_S3_URI are the legacy names
+    input_path = os.environ.get("INPUT_URI") or os.environ.get("INPUT_S3_URI")
+    output_path = os.environ.get("OUTPUT_URI") or os.environ.get("OUTPUT_S3_URI")
 
     if not input_path or not output_path:
         print(
-            "ERROR: INPUT_S3_URI and OUTPUT_S3_URI environment variables required", file=sys.stderr
+            "ERROR: INPUT_URI and OUTPUT_URI (or legacy INPUT_S3_URI and OUTPUT_S3_URI) "
+            "environment variables required",
+            file=sys.stderr,
         )
         sys.exit(1)
 
