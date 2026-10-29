@@ -25,6 +25,7 @@ def create_batches(
 
         input_path = os.path.join(temp_dir, f"{batch_id}_input.json")
         output_path = os.path.join(temp_dir, f"{batch_id}_output.json")
+        merged_path = os.path.join(temp_dir, f"{batch_id}_merged.json")
 
         # Write batch input file
         write_batch_file(batch_records, input_path)
@@ -35,6 +36,7 @@ def create_batches(
             input_path=input_path,
             output_path=output_path,
             record_count=len(batch_records),
+            merged_path=merged_path,
         )
         batches.append(batch)
 

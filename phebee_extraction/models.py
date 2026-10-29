@@ -16,6 +16,10 @@ class BatchInfo:
     status: str = "pending"  # 'pending'|'running'|'success'|'failed'
     error_message: Optional[str] = None
     runtime_ms: Optional[int] = None
+    # Where `run` writes the final output merged with the original input fields. Separate from
+    # output_path because a container may create that file as another user (root on Linux),
+    # in which case the host can read it but not rewrite it.
+    merged_path: Optional[str] = None
 
 
 class ExtractionError(Exception):

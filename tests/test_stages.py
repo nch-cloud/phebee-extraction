@@ -20,6 +20,7 @@ from phebee_extraction.models import BatchProcessingError  # noqa: E402
 from phebee_extraction.pipeline import (  # noqa: E402
     ExecutionContext,
     ProgressTracker,
+    aggregate_results,
     run_batch_pipeline,
 )
 from phebee_extraction.runner import StageResult  # noqa: E402
@@ -131,10 +132,54 @@ def test_pipeline_chains_stages_through_runner(tmp_path):
     assert runner.calls[1][2] == batch.output_path
 
     # the fake tool dropped subject_id; the pipeline merged it back from the input
-    with open(batch.output_path) as f:
+    with open(batch.merged_path) as f:
         out = json.load(f)
     assert [r["subject_id"] for r in out["records"]] == ["subj-1", "subj-2"]
     assert out["records"][0]["annotations"] == [ANNOTATION]
+
+
+class ReadOnlyOutputRunner(FakeRunner):
+    """
+    Like a container running as root on Linux: the files it creates in the shared directory
+    belong to another user, so the host can read them but not rewrite them.
+    """
+
+    def run_stage(self, image, input_path, output_path):
+        result = super().run_stage(image, input_path, output_path)
+        os.chmod(output_path, 0o444)
+        return result
+
+
+def test_pipeline_never_rewrites_a_file_the_container_created(tmp_path):
+    """
+    Regression test: on Linux the container's output is owned by root, and merging the original
+    fields back by rewriting that file in place failed with PermissionError. The merged records
+    go to a separate file instead, and the container's own output is left untouched.
+    """
+    runner = ReadOnlyOutputRunner()
+    ctx = make_ctx(tmp_path, ["tool-a:1"], runner)
+    batch = ctx.batches[0]
+
+    run_batch_pipeline(ctx, batch, ProgressTracker(1, 1))
+
+    assert batch.status == "success"
+
+    # the container's output is exactly what the tool wrote: no subject_id merged into it
+    with open(batch.output_path) as f:
+        raw = json.load(f)
+    assert all("subject_id" not in record for record in raw["records"])
+
+    # the merged copy is a different file, and has the original fields back
+    assert batch.merged_path and batch.merged_path != batch.output_path
+    with open(batch.merged_path) as f:
+        merged = json.load(f)
+    assert [r["subject_id"] for r in merged["records"]] == ["subj-1", "subj-2"]
+
+    # aggregation reads the merged copy
+    out = tmp_path / "aggregated.json"
+    aggregate_results(ctx, str(out))
+    lines = [json.loads(line) for line in out.read_text().splitlines()]
+    assert [line["project_subject_id"] for line in lines] == ["subj-1", "subj-2"]
 
 
 def test_pipeline_stage_failure_raises_by_default(tmp_path):
