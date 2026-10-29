@@ -53,7 +53,7 @@ files to and from S3, GCS or a shared filesystem is the wrapper's job.
 | `manifest.json` | split | the scheduler | see below |
 | `batch_NNNNNN_stageK.json` | container K | container K+1 | same shape as output, below |
 | `batch_NNNNNN_output.json` | last container | transform | `{"records": [...], "run_metadata": {...}}` ([INTERFACE.md](INTERFACE.md)) |
-| `*.jsonl` | transform | PheBee import, or you | PheBee or flat format ([README.md](README.md#output-format)) |
+| `aggregated.json` / `*.json` | transform | PheBee import, or you | JSON Lines, PheBee or flat format ([README.md](README.md#output-format)). Named `.json` because PheBee's import only reads `*.json` |
 
 `manifest.json`:
 
@@ -102,7 +102,7 @@ python extract.py split --input notes.csv --output-dir batches/ --batch-size 100
 python extract.py transform \
   --input batches/batch_*_output.json \
   --original-input batches/batch_*_input.json \
-  --output evidence.jsonl --project-id my-project --subject-id-column mrn \
+  --output evidence.json --project-id my-project --subject-id-column mrn \
   --image-ref tool-a:1.0@sha256:... tool-b:2.0@sha256:...
 ```
 

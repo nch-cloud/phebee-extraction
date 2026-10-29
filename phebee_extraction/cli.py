@@ -26,6 +26,7 @@ from phebee_extraction.interface import merge_original_records, read_batch_outpu
 from phebee_extraction.loading import load_input_data, validate_input_records
 from phebee_extraction.models import BatchProcessingError
 from phebee_extraction.pipeline import (
+    OUTPUT_FILENAME,
     ExecutionContext,
     ProgressTracker,
     aggregate_results,
@@ -254,7 +255,7 @@ def run_command(args: argparse.Namespace) -> int:
     progress.close()
 
     # Aggregate results
-    output_file = os.path.join(output_dir, "aggregated.jsonl")
+    output_file = os.path.join(output_dir, OUTPUT_FILENAME)
     aggregate_results(ctx, output_file)
 
     # Cleanup
@@ -397,10 +398,10 @@ def build_review_parser() -> argparse.ArgumentParser:
         prog=f"{_prog()} review",
         description="Show PheBee-format results next to the original notes: each note, then "
         "the text matched for every term, with its span and context flags. Reads the results "
-        "of `run` (aggregated.jsonl) and the same input file that was extracted.",
+        f"of `run` ({OUTPUT_FILENAME}) and the same input file that was extracted.",
     )
     parser.add_argument(
-        "--results", required=True, help="PheBee-format results file (aggregated.jsonl)"
+        "--results", required=True, help=f"PheBee-format results file ({OUTPUT_FILENAME})"
     )
     _add_input_arguments(parser, batch_size=False)
     parser.add_argument(

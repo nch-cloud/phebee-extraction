@@ -39,9 +39,10 @@ All notable changes to this project will be documented in this file.
 - Stage containers now receive the neutral `INPUT_URI`/`OUTPUT_URI` environment variables
   alongside the legacy `INPUT_S3_URI`/`OUTPUT_S3_URI` names (same values). The legacy names
   are deprecated in INTERFACE.md; containers should prefer the neutral names.
-
-### Changed
-
+- The aggregated output is now `aggregated.json` instead of `aggregated.jsonl`. The content is
+  unchanged (JSON Lines), but PheBee's bulk import only reads files ending in `.json` under a
+  `jsonl/` prefix: a `.jsonl` upload passes validation and is then silently skipped. The README's
+  import example previously uploaded `evidence.jsonl` and would have imported nothing.
 - Supported Python is now 3.9+ (3.8 is end-of-life); 3.13 added to the classifiers. A GitHub
   Actions workflow runs lint and the full test suite, including the Docker integration tests,
   on every supported version.
@@ -62,7 +63,6 @@ All notable changes to this project will be documented in this file.
   no correctly negated finding. It now recognises them, with IDs and labels checked against HPO,
   and reports terms in text order. The label for `HP:0001263` is corrected to "Global
   developmental delay". A test fails if any demo note yields no match.
-
 - The mock context classifier used a 20-character window that ignored sentence boundaries,
   so it got several sample notes wrong (e.g. in "Patient presents with fever and cough.
   Denies chest pain." both terms were marked negated; in "Chronic headaches, family history

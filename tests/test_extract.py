@@ -390,7 +390,7 @@ def test_aggregate_results_jsonl(sample_batch_outputs, tmp_path):
         json.dump(sample_batch_outputs[1], f)
 
     # Aggregate
-    output_file = tmp_path / "aggregated.jsonl"
+    output_file = tmp_path / "aggregated.json"
     extract.aggregate_results(ctx, str(output_file))
 
     # Verify JSONL format
@@ -448,7 +448,7 @@ def test_aggregate_preserves_all_records(sample_batch_outputs, tmp_path):
     with open(batch2.output_path, "w") as f:
         json.dump(sample_batch_outputs[1], f)
 
-    output_file = tmp_path / "aggregated.jsonl"
+    output_file = tmp_path / "aggregated.json"
     extract.aggregate_results(ctx, str(output_file))
 
     # Count records

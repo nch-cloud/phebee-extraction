@@ -130,7 +130,7 @@ def test_end_to_end_single_tool(mock_extractor_image, sample_input_file, temp_wo
     assert result.returncode == 0, f"Command failed: {result.stderr}"
 
     # Check output file exists
-    output_file = output_dir / "aggregated.jsonl"
+    output_file = output_dir / "aggregated.json"
     assert output_file.exists(), "Output file not created"
 
     # Validate output format
@@ -223,7 +223,7 @@ def test_end_to_end_chained_tools(mock_extractor_image, context_classifier_image
     assert result.returncode == 0, f"Command failed: {result.stderr}"
 
     # Check output
-    output_file = output_dir / "aggregated.jsonl"
+    output_file = output_dir / "aggregated.json"
     assert output_file.exists()
 
     with open(output_file) as f:
@@ -346,7 +346,7 @@ def test_gpu_flag_accepted(mock_extractor_image, sample_input_file, temp_workspa
     # 2. GPU unavailable: returncode 1 with clear Docker GPU error message
     if result.returncode == 0:
         # GPU worked - verify output exists
-        assert (output_dir / "aggregated.jsonl").exists()
+        assert (output_dir / "aggregated.json").exists()
     else:
         # GPU failed - verify we got a clear error (not a crash)
         assert result.returncode == 1
@@ -477,7 +477,7 @@ def test_batch_size_configuration(mock_extractor_image, temp_workspace):
     assert result.returncode == 0
 
     # Check metadata for batch count
-    output_file = output_dir / "aggregated.jsonl"
+    output_file = output_dir / "aggregated.json"
     with open(output_file) as f:
         lines = f.readlines()
 
@@ -510,7 +510,7 @@ def test_output_validation(mock_extractor_image, sample_input_file, temp_workspa
     assert result.returncode == 0
 
     # Output should be valid JSONL
-    output_file = output_dir / "aggregated.jsonl"
+    output_file = output_dir / "aggregated.json"
     with open(output_file) as f:
         for line in f:
             # Each line should be valid JSON
@@ -601,7 +601,7 @@ def test_end_to_end_preserves_extra_fields(tmp_path, mock_extractor_image):
     assert result.returncode == 0, f"Extract failed: {result.stderr}"
 
     # Read output
-    output_file = output_dir / "aggregated.jsonl"
+    output_file = output_dir / "aggregated.json"
     assert output_file.exists()
 
     records = []

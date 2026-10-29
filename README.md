@@ -92,13 +92,13 @@ python extract.py \
   --project-id demo
 ```
 
-Each run writes `aggregated.jsonl` (11 records from the 5 sample notes). The mock tools find phenotypes by matching a small built-in list of terms, so the results are only useful for checking the plumbing, not as real extractions.
+Each run writes `aggregated.json` (11 records from the 5 sample notes). The mock tools find phenotypes by matching a small built-in list of terms, so the results are only useful for checking the plumbing, not as real extractions.
 
 **Reading the results against the original notes.** Each PheBee-format record points back to its note and the matched span, so `review` can join the results to the input file and show each note with what was matched in it:
 
 ```bash
 python extract.py review \
-  --results results-chained/aggregated.jsonl \
+  --results results-chained/aggregated.json \
   --input examples/sample_notes_with_subjects.jsonl
 ```
 
@@ -213,7 +213,7 @@ python extract.py split --input notes.csv --output-dir batches/ \
 python extract.py transform \
   --input batches/batch_000001_output.json batches/batch_000002_output.json \
   --original-input batches/batch_000001_input.json batches/batch_000002_input.json \
-  --output evidence.jsonl --project-id my-project --subject-id-column mrn \
+  --output evidence.json --project-id my-project --subject-id-column mrn \
   --image-ref clinphen:latest@sha256:0da85be...
 ```
 
@@ -228,7 +228,7 @@ python extract.py transform \
 `review` shows PheBee-format results next to the original notes: each note, then every matched span with its text, term and context flags. Pass the results file and the same input file that was extracted, with the same column options:
 
 ```bash
-python extract.py review --results results/aggregated.jsonl --input notes.csv \
+python extract.py review --results results/aggregated.json --input notes.csv \
   --id-column note_id --text-column note_text
 ```
 
@@ -279,7 +279,7 @@ Use `--id-column` and `--text-column` to specify column names.
 
 ### PheBee Format (Default)
 
-Output is written as JSONL (`aggregated.jsonl`) with one record per annotation, ready for PheBee bulk import:
+Output is written as JSONL (`aggregated.json`) with one record per annotation, ready for PheBee bulk import:
 
 ```jsonl
 {"project_id": "my-project", "project_subject_id": "patient-001", "term_iri": "http://purl.obolibrary.org/obo/HP_0001945", "evidence": [{...}], "row_num": 1, "batch_id": 0}
@@ -292,7 +292,7 @@ The `contexts` object holds three boolean flags, `negated`, `family` and `hypoth
 
 ### Flat Format (--flat-format)
 
-Output is written as JSONL (`aggregated.jsonl`) with one record per note:
+Output is written as JSONL (`aggregated.json`) with one record per note:
 
 ```jsonl
 {"note_id": "note_001", "text": "...", "annotations": [...], "error": null}
@@ -342,10 +342,12 @@ python extract.py \
   --docker-images fasthpocr:batch-latest,phenocontext:batch-latest \
   --project-id my-phebee-project
 
-# Upload to PheBee (example with S3)
-aws s3 cp results/aggregated.jsonl s3://my-bucket/evidence.jsonl
-# Then trigger PheBee bulk import via API/console
+# Upload for PheBee bulk import (example with S3), then trigger the import via API/console
+aws s3 cp results/aggregated.json \
+  "s3://${BUCKET}/bulk-imports/projects/my-phebee-project/runs/${RUN_ID}/jsonl/evidence.json"
 ```
+
+**PheBee naming requirements** (see PheBee's `docs/bulk-import-guide.md`): the uploaded key must include a path component named `jsonl/`, and the file must end in `.json`. The validator accepts `.jsonl` too, but the import jobs read the prefix with a `*.json` glob, so a `.jsonl` upload is silently skipped and the run reports success having imported nothing. The output is written as `aggregated.json` for this reason, even though its content is JSON Lines; keep the `.json` extension when you upload or rename it.
 
 **Required Input Fields:**
 

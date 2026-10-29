@@ -18,6 +18,11 @@ from phebee_extraction.transform import PheBeeConfig, write_flat_jsonl, write_ph
 
 logger = logging.getLogger(__name__)
 
+# Name of the aggregated output written by `run`. It is JSON Lines, but PheBee's bulk import
+# only reads files ending in .json (it globs the upload prefix with *.json), so the default
+# name is import-ready as is.
+OUTPUT_FILENAME = "aggregated.json"
+
 
 @dataclass
 class ExecutionContext:
