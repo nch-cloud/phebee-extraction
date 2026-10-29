@@ -390,7 +390,7 @@ def test_aggregate_results_jsonl(sample_batch_outputs, tmp_path):
         json.dump(sample_batch_outputs[1], f)
 
     # Aggregate
-    output_file = tmp_path / "aggregated.jsonl"
+    output_file = tmp_path / "aggregated.json"
     extract.aggregate_results(ctx, str(output_file))
 
     # Verify JSONL format
@@ -448,7 +448,7 @@ def test_aggregate_preserves_all_records(sample_batch_outputs, tmp_path):
     with open(batch2.output_path, "w") as f:
         json.dump(sample_batch_outputs[1], f)
 
-    output_file = tmp_path / "aggregated.jsonl"
+    output_file = tmp_path / "aggregated.json"
     extract.aggregate_results(ctx, str(output_file))
 
     # Count records
@@ -545,7 +545,7 @@ def test_aggregate_phebee_format(sample_batch_outputs, tmp_path):
     assert rec1["evidence"][0]["evidence_creator_id"] == "test:latest"
     assert rec1["evidence"][0]["evidence_creator_name"] == "test:latest"
     assert rec1["evidence"][0]["evidence_creator_digest"] == "sha256:abc123"
-    assert rec1["evidence"][0]["contexts"]["negated"] == 0.0
+    assert rec1["evidence"][0]["contexts"]["negated"] is False
     assert rec1["row_num"] == 1
     assert rec1["batch_id"] == 0
 
@@ -553,14 +553,14 @@ def test_aggregate_phebee_format(sample_batch_outputs, tmp_path):
     rec2 = json.loads(lines[1])
     assert rec2["project_subject_id"] == "subj-001"
     assert rec2["term_iri"] == "http://purl.obolibrary.org/obo/HP_0012735"
-    assert rec2["evidence"][0]["contexts"]["negated"] == 1.0
+    assert rec2["evidence"][0]["contexts"]["negated"] is True
     assert rec2["row_num"] == 2
 
     # Check third record (different subject)
     rec3 = json.loads(lines[2])
     assert rec3["project_subject_id"] == "subj-002"
     assert rec3["term_iri"] == "http://purl.obolibrary.org/obo/HP_0002315"
-    assert rec3["evidence"][0]["contexts"]["family"] == 1.0
+    assert rec3["evidence"][0]["contexts"]["family"] is True
     assert rec3["row_num"] == 3
 
 
@@ -583,6 +583,20 @@ def test_get_stage_paths_single_stage(tmp_path):
 
     assert "batch_000001_input.json" in input_path
     assert "batch_000001_output.json" in output_path
+
+
+def test_build_container_environment_sets_neutral_and_legacy_names(tmp_path):
+    """Both neutral and legacy env var pairs are set, with identical in-container paths"""
+    env = extract.build_container_environment(
+        str(tmp_path / "batch_000001_stage1.json"), str(tmp_path / "batch_000001_output.json")
+    )
+
+    assert env == {
+        "INPUT_URI": "/data/batch_000001_stage1.json",
+        "OUTPUT_URI": "/data/batch_000001_output.json",
+        "INPUT_S3_URI": "/data/batch_000001_stage1.json",
+        "OUTPUT_S3_URI": "/data/batch_000001_output.json",
+    }
 
 
 def test_get_stage_paths_multi_stage(tmp_path):

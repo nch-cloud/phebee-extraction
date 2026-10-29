@@ -14,9 +14,11 @@ from pathlib import Path
 import docker
 import pytest
 
-# Add parent directory to path
+# Add parent directory (for extract.py) and this directory (for context_cases.py) to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
+from context_cases import CASES  # noqa: E402
 
 # ============================================================================
 # Fixtures
@@ -34,46 +36,34 @@ def docker_client():
         pytest.skip("Docker daemon not available")
 
 
+def _build_mock_image(docker_client, dockerfile, image_tag):
+    """
+    Build a mock tool image and return its tag.
+
+    Always builds rather than reusing an image that already has the tag: Docker's layer cache
+    makes an unchanged build fast, and reusing a tag would test edits to the mock scripts
+    against a stale image.
+    """
+    print(f"Building mock image: {image_tag}")
+    _, build_logs = docker_client.images.build(
+        path=str(Path(__file__).parent), dockerfile=dockerfile, tag=image_tag, rm=True
+    )
+    for log in build_logs:
+        if "stream" in log:
+            print(log["stream"].strip())
+    return image_tag
+
+
 @pytest.fixture(scope="session")
 def mock_extractor_image(docker_client):
     """Build mock extractor Docker image (keyword-based extraction)"""
-    test_dir = Path(__file__).parent
-    image_tag = "phebee-mock-extractor:test"
-
-    try:
-        docker_client.images.get(image_tag)
-        print(f"Using existing image: {image_tag}")
-    except docker.errors.ImageNotFound:
-        print(f"Building mock extractor image: {image_tag}")
-        image, build_logs = docker_client.images.build(
-            path=str(test_dir), dockerfile="Dockerfile.mock", tag=image_tag, rm=True
-        )
-        for log in build_logs:
-            if "stream" in log:
-                print(log["stream"].strip())
-
-    return image_tag
+    return _build_mock_image(docker_client, "Dockerfile.mock", "phebee-mock-extractor:test")
 
 
 @pytest.fixture(scope="session")
 def context_classifier_image(docker_client):
     """Build mock context classifier Docker image"""
-    test_dir = Path(__file__).parent
-    image_tag = "phebee-mock-context:test"
-
-    try:
-        docker_client.images.get(image_tag)
-        print(f"Using existing image: {image_tag}")
-    except docker.errors.ImageNotFound:
-        print(f"Building mock context classifier image: {image_tag}")
-        image, build_logs = docker_client.images.build(
-            path=str(test_dir), dockerfile="Dockerfile.mock-context", tag=image_tag, rm=True
-        )
-        for log in build_logs:
-            if "stream" in log:
-                print(log["stream"].strip())
-
-    return image_tag
+    return _build_mock_image(docker_client, "Dockerfile.mock-context", "phebee-mock-context:test")
 
 
 @pytest.fixture
@@ -140,7 +130,7 @@ def test_end_to_end_single_tool(mock_extractor_image, sample_input_file, temp_wo
     assert result.returncode == 0, f"Command failed: {result.stderr}"
 
     # Check output file exists
-    output_file = output_dir / "aggregated.jsonl"
+    output_file = output_dir / "aggregated.json"
     assert output_file.exists(), "Output file not created"
 
     # Validate output format
@@ -233,7 +223,7 @@ def test_end_to_end_chained_tools(mock_extractor_image, context_classifier_image
     assert result.returncode == 0, f"Command failed: {result.stderr}"
 
     # Check output
-    output_file = output_dir / "aggregated.jsonl"
+    output_file = output_dir / "aggregated.json"
     assert output_file.exists()
 
     with open(output_file) as f:
@@ -241,28 +231,21 @@ def test_end_to_end_chained_tools(mock_extractor_image, context_classifier_image
 
     assert len(lines) == 6  # 5 records + metadata
 
-    # Verify context classification worked
-    # Note 1 should have negated annotations (Denies)
-    note1 = json.loads(lines[0])
-    if note1["note_id"] == "ctx_001":
-        # "fever" and "cough" should be near "Denies"
-        for ann in note1["annotations"]:
-            if ann["text"] in ["fever", "cough"]:
-                assert "contexts" in ann, "Context missing from annotation"
-                # Note: context window might not catch "Denies" for these
-                # Just verify contexts field exists
-                assert "negated" in ann["contexts"]
-                assert "family" in ann["contexts"]
-                assert "hypothetical" in ann["contexts"]
-
-    # Find note 2 (family history)
-    for line in lines[:-1]:  # Skip metadata
-        note = json.loads(line)
-        if note["note_id"] == "ctx_002":
-            # "migraines" should have family=1
-            for ann in note["annotations"]:
-                if ann["text"] == "migraines":
-                    assert ann["contexts"]["family"] == 1, "Should detect family history"
+    # Every note's context flags must match the expectations in tests/context_cases.py
+    expected_by_text = dict(CASES)
+    records = [json.loads(line) for line in lines[:-1]]  # Skip metadata
+    assert len(records) == len(test_notes)
+    for record in records:
+        got = [
+            (
+                ann["text"],
+                ann["contexts"]["negated"],
+                ann["contexts"]["family"],
+                ann["contexts"]["hypothetical"],
+            )
+            for ann in sorted(record["annotations"], key=lambda a: a["start"])
+        ]
+        assert got == expected_by_text[record["text"]], record["note_id"]
 
 
 def test_container_failure_handling(docker_client, sample_input_file, temp_workspace):
@@ -363,7 +346,7 @@ def test_gpu_flag_accepted(mock_extractor_image, sample_input_file, temp_workspa
     # 2. GPU unavailable: returncode 1 with clear Docker GPU error message
     if result.returncode == 0:
         # GPU worked - verify output exists
-        assert (output_dir / "aggregated.jsonl").exists()
+        assert (output_dir / "aggregated.json").exists()
     else:
         # GPU failed - verify we got a clear error (not a crash)
         assert result.returncode == 1
@@ -494,7 +477,7 @@ def test_batch_size_configuration(mock_extractor_image, temp_workspace):
     assert result.returncode == 0
 
     # Check metadata for batch count
-    output_file = output_dir / "aggregated.jsonl"
+    output_file = output_dir / "aggregated.json"
     with open(output_file) as f:
         lines = f.readlines()
 
@@ -527,7 +510,7 @@ def test_output_validation(mock_extractor_image, sample_input_file, temp_workspa
     assert result.returncode == 0
 
     # Output should be valid JSONL
-    output_file = output_dir / "aggregated.jsonl"
+    output_file = output_dir / "aggregated.json"
     with open(output_file) as f:
         for line in f:
             # Each line should be valid JSON
@@ -539,8 +522,15 @@ def test_output_validation(mock_extractor_image, sample_input_file, temp_workspa
 # ============================================================================
 
 
-def test_mock_extractor_directly(tmp_path):
-    """Test mock extractor script directly (without Docker)"""
+@pytest.mark.parametrize(
+    "input_var,output_var",
+    [
+        ("INPUT_URI", "OUTPUT_URI"),
+        ("INPUT_S3_URI", "OUTPUT_S3_URI"),  # legacy names
+    ],
+)
+def test_mock_extractor_directly(tmp_path, input_var, output_var):
+    """Test mock extractor script directly (without Docker), with neutral and legacy env names"""
     # Create input
     input_file = tmp_path / "input.json"
     with open(input_file, "w") as f:
@@ -548,10 +538,10 @@ def test_mock_extractor_directly(tmp_path):
 
     output_file = tmp_path / "output.json"
 
-    # Run mock extractor
-    env = os.environ.copy()
-    env["INPUT_S3_URI"] = str(input_file)
-    env["OUTPUT_S3_URI"] = str(output_file)
+    # Run mock extractor with only one pair of names set
+    env = {k: v for k, v in os.environ.items() if "_URI" not in k}
+    env[input_var] = str(input_file)
+    env[output_var] = str(output_file)
 
     result = subprocess.run(
         [sys.executable, "tests/mock_extractor.py"],
@@ -611,7 +601,7 @@ def test_end_to_end_preserves_extra_fields(tmp_path, mock_extractor_image):
     assert result.returncode == 0, f"Extract failed: {result.stderr}"
 
     # Read output
-    output_file = output_dir / "aggregated.jsonl"
+    output_file = output_dir / "aggregated.json"
     assert output_file.exists()
 
     records = []

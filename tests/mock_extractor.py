@@ -23,9 +23,13 @@ KEYWORD_MAP = {
     "seizure": ("HP:0001250", "Seizure"),
     "seizures": ("HP:0001250", "Seizure"),
     "pneumonia": ("HP:0002090", "Pneumonia"),
-    "developmental delay": ("HP:0001263", "Developmental delay"),
+    "developmental delay": ("HP:0001263", "Global developmental delay"),
     "migraine": ("HP:0002076", "Migraine"),
     "migraines": ("HP:0002076", "Migraine"),
+    "chest pain": ("HP:0100749", "Chest pain"),
+    "hearing loss": ("HP:0000365", "Hearing impairment"),
+    "recurrent ear infections": ("HP:0410018", "Recurrent ear infections"),
+    "walking unsteady": ("HP:0002317", "Unsteady gait"),
 }
 
 
@@ -48,17 +52,21 @@ def extract_annotations(text):
                 }
             )
 
-    return annotations
+    # Report terms in the order they appear in the note
+    return sorted(annotations, key=lambda a: a["start"])
 
 
 def main():
     # Read environment variables
-    input_path = os.environ.get("INPUT_S3_URI")
-    output_path = os.environ.get("OUTPUT_S3_URI")
+    # Neutral names take precedence; INPUT_S3_URI/OUTPUT_S3_URI are the legacy names
+    input_path = os.environ.get("INPUT_URI") or os.environ.get("INPUT_S3_URI")
+    output_path = os.environ.get("OUTPUT_URI") or os.environ.get("OUTPUT_S3_URI")
 
     if not input_path or not output_path:
         print(
-            "ERROR: INPUT_S3_URI and OUTPUT_S3_URI environment variables required", file=sys.stderr
+            "ERROR: INPUT_URI and OUTPUT_URI (or legacy INPUT_S3_URI and OUTPUT_S3_URI) "
+            "environment variables required",
+            file=sys.stderr,
         )
         sys.exit(1)
 

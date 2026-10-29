@@ -3,9 +3,15 @@
 Mock context classification tool
 
 Takes annotations from a previous tool and adds context qualifiers:
-- negated: 1 if negation words nearby
-- family: 1 if family history words nearby
-- hypothetical: 1 if speculative words nearby
+- negated: 1 if a negation cue ("no", "denies", ...) comes before the term
+- family: 1 if a family-history cue ("mother", "family", ...) comes before the term
+- hypothetical: 1 if a speculative cue ("possible", "rule out", ...) comes before the term
+
+A cue affects a term when it appears earlier in the same sentence, with no scope-breaking
+word ("but", "however", ...) in between. This is a deliberately small version of the NegEx
+idea: it handles the notes used by this repo's tests correctly, but it is not a real
+clinical context model (no cues that follow the term, no negation inside lists, no
+abbreviations that end in a period).
 """
 
 import json
@@ -15,10 +21,9 @@ import sys
 import time
 from datetime import datetime
 
-# Simple negation indicators
-NEGATION_WORDS = {"no", "denies", "denied", "negative", "without", "absence", "absent"}
+# Cue phrases. Matched as whole words or phrases, case-insensitively.
+NEGATION_WORDS = {"no", "not", "denies", "denied", "negative", "without", "absence", "absent"}
 
-# Family history indicators
 FAMILY_WORDS = {
     "family",
     "mother",
@@ -33,7 +38,6 @@ FAMILY_WORDS = {
     "hereditary",
 }
 
-# Hypothetical/speculative indicators
 HYPOTHETICAL_WORDS = {
     "possible",
     "possibly",
@@ -49,50 +53,72 @@ HYPOTHETICAL_WORDS = {
     "consider",
 }
 
+# Words that end the reach of a cue earlier in the same sentence ("no fever but cough")
+SCOPE_BREAK_WORDS = {"but", "however", "although", "though", "except"}
 
-def get_context_window(text, start, end, window_size=20):
-    """Get text around annotation for context detection"""
-    # Get words before and after the annotation
-    before_start = max(0, start - window_size)
-    after_end = min(len(text), end + window_size)
+# A sentence ends at . ! ? or ; when followed by whitespace (so "98.6" is not a break), or
+# at a newline
+SENTENCE_BREAK = re.compile(r"[.!?;]+(?=\s|$)|\n+")
 
-    context_before = text[before_start:start].lower()
-    context_after = text[end:after_end].lower()
 
-    return context_before, context_after
+def _phrase_pattern(phrases):
+    """Regex matching any phrase as a whole word/phrase, longest first"""
+    ordered = sorted(phrases, key=len, reverse=True)
+    return re.compile(r"\b(?:" + "|".join(re.escape(p) for p in ordered) + r")(?!\w)")
+
+
+NEGATION_PATTERN = _phrase_pattern(NEGATION_WORDS)
+FAMILY_PATTERN = _phrase_pattern(FAMILY_WORDS)
+HYPOTHETICAL_PATTERN = _phrase_pattern(HYPOTHETICAL_WORDS)
+SCOPE_BREAK_PATTERN = _phrase_pattern(SCOPE_BREAK_WORDS)
+
+
+def sentence_start(text, position):
+    """Offset where the sentence containing `position` begins"""
+    start = 0
+    for match in SENTENCE_BREAK.finditer(text):
+        if match.start() >= position:
+            break
+        start = match.end()
+    return start
+
+
+def preceding_scope(text, position):
+    """
+    Lower-cased text before `position` that can still affect a term starting there: from the
+    start of its sentence, restarting after the last scope-breaking word.
+    """
+    prefix = text[sentence_start(text, position) : position].lower()
+    scope_start = 0
+    for match in SCOPE_BREAK_PATTERN.finditer(prefix):
+        scope_start = match.end()
+    return prefix[scope_start:]
 
 
 def classify_context(text, annotation):
     """Add context qualifiers to an annotation"""
-    start = annotation["start"]
-    end = annotation["end"]
+    scope = preceding_scope(text, annotation["start"])
 
-    # Get surrounding text
-    before, after = get_context_window(text, start, end)
-    context_text = before + " " + after
-
-    # Split into words for checking
-    words = set(re.findall(r"\b\w+\b", context_text))
-
-    # Check for context indicators
-    negated = 1 if words & NEGATION_WORDS else 0
-    family = 1 if words & FAMILY_WORDS else 0
-    hypothetical = 1 if words & HYPOTHETICAL_WORDS else 0
-
-    # Add contexts field
-    annotation["contexts"] = {"negated": negated, "family": family, "hypothetical": hypothetical}
+    annotation["contexts"] = {
+        "negated": 1 if NEGATION_PATTERN.search(scope) else 0,
+        "family": 1 if FAMILY_PATTERN.search(scope) else 0,
+        "hypothetical": 1 if HYPOTHETICAL_PATTERN.search(scope) else 0,
+    }
 
     return annotation
 
 
 def main():
     # Read environment variables
-    input_path = os.environ.get("INPUT_S3_URI")
-    output_path = os.environ.get("OUTPUT_S3_URI")
+    # Neutral names take precedence; INPUT_S3_URI/OUTPUT_S3_URI are the legacy names
+    input_path = os.environ.get("INPUT_URI") or os.environ.get("INPUT_S3_URI")
+    output_path = os.environ.get("OUTPUT_URI") or os.environ.get("OUTPUT_S3_URI")
 
     if not input_path or not output_path:
         print(
-            "ERROR: INPUT_S3_URI and OUTPUT_S3_URI environment variables required", file=sys.stderr
+            "ERROR: INPUT_URI and OUTPUT_URI (or legacy INPUT_S3_URI and OUTPUT_S3_URI) "
+            "environment variables required",
+            file=sys.stderr,
         )
         sys.exit(1)
 
