@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `phebee-extract` console script, installed with the package. `python extract.py` still
+  works from a checkout; the wheel no longer ships a top-level `extract` module.
 - `StageRunner` protocol (`phebee_extraction.runner`) describing how one pipeline stage is
   executed, with `DockerRunner` as the local implementation. Other orchestrators can supply
   their own runner and reuse the rest of the pipeline.

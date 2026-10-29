@@ -40,6 +40,11 @@ logger = logging.getLogger(__name__)
 SUBCOMMANDS = ("run", "split", "transform")
 
 
+def _prog() -> str:
+    """Name to show in usage: `extract.py` from a checkout, `phebee-extract` when installed"""
+    return os.path.basename(sys.argv[0]) or "phebee-extract"
+
+
 # ----------------------------------------------------------------------------
 # Shared argument groups
 # ----------------------------------------------------------------------------
@@ -103,7 +108,7 @@ def _validate_phebee_output_arguments(parser: argparse.ArgumentParser, args) -> 
 
 def build_run_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="extract.py",
+        prog=_prog(),
         description="PheBee Local Extraction Orchestrator",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
@@ -263,7 +268,7 @@ def run_command(args: argparse.Namespace) -> int:
 
 def build_split_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="extract.py split",
+        prog=f"{_prog()} split",
         description="Load clinical notes and write batch files (plus manifest.json) for an "
         "external scheduler to run through the extraction containers.",
     )
@@ -304,7 +309,7 @@ def split_command(args: argparse.Namespace) -> int:
 
 def build_transform_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="extract.py transform",
+        prog=f"{_prog()} transform",
         description="Convert one or more tool output files (INTERFACE.md format) into PheBee "
         "bulk-import JSONL, or flat note-centric JSONL with --flat-format.",
     )

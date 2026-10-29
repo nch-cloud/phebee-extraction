@@ -36,6 +36,9 @@ dev = [
     "ruff>=0.4.0",
 ]
 
+[project.scripts]
+phebee-extract = "phebee_extraction.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/nch-cloud/phebee-extraction"
 Repository = "https://github.com/nch-cloud/phebee-extraction"
@@ -47,9 +50,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["phebee_extraction"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"extract.py" = "extract.py"  # Compatibility entry point; implementation is in the package
+# extract.py is kept in the repo for `python extract.py` from a checkout, but is not shipped
+# in the wheel; installed users get the `phebee-extract` console script instead.
 
 [tool.ruff]
 line-length = 100

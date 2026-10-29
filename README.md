@@ -44,6 +44,30 @@ If you don't have `uv` installed:
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
+Installing the package also provides a `phebee-extract` command. The examples below use `python extract.py` from a checkout; if you installed the package, `phebee-extract` takes the same arguments.
+
+### Installing as a Dependency
+
+Other projects (for example an orchestrator for a cloud or cluster, see [ARCHITECTURE.md](ARCHITECTURE.md)) can depend on this package directly from a release tag:
+
+```bash
+# pip
+pip install "phebee-extraction @ git+https://github.com/nch-cloud/phebee-extraction.git@v1.0.0"
+
+# uv
+uv add "git+https://github.com/nch-cloud/phebee-extraction.git" --tag v1.0.0
+```
+
+Or in `pyproject.toml`:
+
+```toml
+dependencies = [
+  "phebee-extraction @ git+https://github.com/nch-cloud/phebee-extraction.git@v1.0.0",
+]
+```
+
+The public API is what `phebee_extraction.__all__` exports (`from phebee_extraction import PheBeeConfig, write_phebee_jsonl, ...`). Module-level names not listed there may change between minor versions.
+
 ### Basic Usage
 
 **PheBee format (default)** - Ready for PheBee bulk import:
