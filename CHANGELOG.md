@@ -4,105 +4,66 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Added
+## [1.0.0] - 2026-10-29
 
-- `phebee-extract` console script, installed with the package. `python extract.py` still
-  works from a checkout; the wheel no longer ships a top-level `extract` module.
-- `StageRunner` protocol (`phebee_extraction.runner`) describing how one pipeline stage is
-  executed, with `DockerRunner` as the local implementation. Other orchestrators can supply
-  their own runner and reuse the rest of the pipeline.
-- `extract.py split` writes batch files plus a `manifest.json` for an external scheduler.
-- `extract.py transform` converts tool output files into PheBee or flat JSONL, with
-  `--original-input` to merge back dropped fields, `--image-ref` for provenance, and
-  `--start-row-num` for per-batch part files.
-- `tests/test_stages.py`: pipeline tests using a fake runner (no Docker), plus `split` and
-  `transform` command tests.
-- `tests/context_cases.py` and `tests/test_mock_context.py`: expected context flags for every
-  note in the sample data and inline test notes, checked against the mock context classifier
-  (no Docker), with a guard that fails when sample data is added without an expectation.
-- `extract.py review` shows PheBee-format results next to the original notes (each note, then
-  every matched span with its text, term and context flags). It reads any input format and
-  column options `run` does, so it works on real CSV/Parquet data, and replaces the `jq`
-  snippet in the Try It walkthrough. `tests/test_review.py` checks it, including that the
-  README's displayed output is exactly what the command prints.
-- `ARCHITECTURE.md`: the split / run / transform model, artifacts, the `StageRunner`
-  contract, provenance, and where other orchestrators plug in.
-- README: a specification of `evidence_creator_digest` (format, ordering, null semantics,
-  digest source), noting that PheBee's bulk import currently accepts and drops the field, that
-  it is named so a future `creator_digest` column can read it unchanged, and that imported runs
-  should use immutable tags until then.
+First release. A lightweight, local alternative to the AWS PheBee extraction pipeline: it runs
+extraction containers over clinical notes on a single machine and writes PheBee-ready output.
 
-### Changed
+### Features
 
-- Split `extract.py` into the `phebee_extraction` package, one module per pipeline stage
-  (`loading`, `batching`, `interface`, `docker_runner`, `transform`, `pipeline`, `cli`).
-  `extract.py` remains as the command-line entry point and re-exports the public API, so
-  existing commands and `import extract` keep working.
-- PheBee-format transformation now takes a `PheBeeConfig` instead of the full execution
-  context, so it can be reused by other orchestrators.
-- Stage containers now receive the neutral `INPUT_URI`/`OUTPUT_URI` environment variables
-  alongside the legacy `INPUT_S3_URI`/`OUTPUT_S3_URI` names (same values). The legacy names
-  are deprecated in INTERFACE.md; containers should prefer the neutral names.
-- The aggregated output is now `aggregated.json` instead of `aggregated.jsonl`. The content is
-  unchanged (JSON Lines), but PheBee's bulk import only reads files ending in `.json` under a
-  `jsonl/` prefix: a `.jsonl` upload passes validation and is then silently skipped. The README's
-  import example previously uploaded `evidence.jsonl` and would have imported nothing.
-- Supported Python is now 3.9+ (3.8 is end-of-life); 3.13 added to the classifiers. A GitHub
-  Actions workflow runs lint and the full test suite, including the Docker integration tests,
-  on every supported version.
-- PheBee-format `contexts` flags are now written as booleans (`true`/`false`) instead of
-  floats (`1.0`/`0.0`), since they are boolean concepts. PheBee's bulk import accepts both and
-  hashes them identically, so evidence IDs are unaffected. A missing flag is `false`; a value
-  that is not a 0/1 flag (e.g. a score of 0.7) skips that annotation with a warning instead of
-  being passed through. `review` prints context values as JSON (`true`/`false`).
+- **Four commands** (`python extract.py ...` from a checkout, or `phebee-extract ...` once the
+  package is installed):
+  - `run` (the default): load notes, batch them, run the extraction containers, and aggregate
+    the results.
+  - `split`: write batch files plus a `manifest.json`, for an external scheduler to run.
+  - `transform`: convert tool output files to PheBee or flat JSONL, with `--original-input` to
+    merge back fields a tool dropped, `--image-ref` for provenance, and `--start-row-num` for
+    per-batch part files.
+  - `review`: show PheBee-format results next to the original notes (each note, then every
+    matched span with its text, term and context flags).
+- **Input formats**: JSON, JSONL, CSV and Parquet, with `--id-column`, `--text-column` and
+  `--subject-id-column` for tabular data. Numeric IDs are converted to strings.
+- **Tool chaining**: run containers in sequence per batch (e.g. extraction, then context
+  classification), batching, GPU support, per-stage timeouts, and `--continue-on-error`.
+- **PheBee format output by default**, ready for bulk import, streamed one record at a time.
+  `--flat-format` gives note-centric output with a `_metadata` line instead.
+- **Provenance**: `evidence_creator_id` and `evidence_creator_name` are derived from the Docker
+  image names and tags (chained tools joined with `+`), and `evidence_creator_digest` from their
+  SHA256 digests. Original input fields, such as the subject identifier, are merged back into
+  tool output, because containers often drop them.
+- **Reusable as a library**: the package is split into one module per pipeline stage, and a
+  `StageRunner` protocol (`prepare` / `run_stage`) describes how a stage is executed, with
+  `DockerRunner` as the local implementation. Other orchestrators can supply their own runner,
+  or drive the stages through `split` and `transform`. `phebee_extraction.__all__` is the public
+  API. See `ARCHITECTURE.md`.
+- **Container interface**: containers receive the neutral `INPUT_URI` / `OUTPUT_URI` environment
+  variables alongside the legacy `INPUT_S3_URI` / `OUTPUT_S3_URI` (same values), so older images
+  keep working. The legacy names are deprecated in `INTERFACE.md`.
+- **Try It walkthrough** in the README using keyword-based mock tools, so the whole flow can be
+  run with only Docker. The mock context classifier applies cues within a sentence, and the
+  expected output for every sample note is tested.
 
-### Fixed
+### PheBee compatibility
 
-- INTERFACE.md's example annotation labelled `HP:0001962` as "Chest pain"; that ID is
-  Palpitations. Corrected to `HP:0100749`.
-- Removed the `[tool.pytest.ini_options]` block from pyproject.toml, which duplicated
-  pytest.ini and made pytest warn on every run.
-- The mock extractor missed plainly stated phenotypes in the demo notes (chest pain, hearing
-  loss, recurrent ear infections, walking unsteady), so the Try It output had visible gaps and
-  no correctly negated finding. It now recognises them, with IDs and labels checked against HPO,
-  and reports terms in text order. The label for `HP:0001263` is corrected to "Global
-  developmental delay". A test fails if any demo note yields no match.
-- The mock context classifier used a 20-character window that ignored sentence boundaries,
-  so it got several sample notes wrong (e.g. in "Patient presents with fever and cough.
-  Denies chest pain." both terms were marked negated; in "Chronic headaches, family history
-  of migraines." headaches was marked family) and never matched the multi-word cue "rule
-  out". A cue now applies to terms after it in the same sentence, stopping at "but" and
-  similar words. The Docker chain test now asserts the exact flags instead of only checking
-  that the keys exist.
-- The integration fixtures reused any existing `phebee-mock-*:test` image, so edits to the
-  mock scripts were tested against a stale image. They now rebuild (Docker's layer cache
-  keeps this fast).
-- Removed a stale `--evidence-creator-id` flag from the `--help` examples.
-- A relative `--output` directory (e.g. `--output results/`) made every container fail:
-  the batch directory was passed to Docker as a relative path, which Docker interprets as a
-  named volume. The mount path is now made absolute. Absolute paths were unaffected.
-- `evidence_creator_id`/`_name` lost the image tag (`clinphen:latest` became `clinphen`)
-  because the reference was taken from Docker's `RepoDigests`, which has no tag. The image
-  name is now kept exactly as given and Docker is used only for the digest. Tags often encode
-  tool and ontology versions, so this matters for provenance.
-- README quick start used `sample_notes.jsonl`, which has no `subject_id`, so the example
-  produced an empty PheBee-format output. It now uses `sample_notes_with_subjects.jsonl`.
-- README: added a "Try It" walkthrough using the mock tools, and a note that PheBee format
-  needs a subject identifier on each note.
+These were checked against PheBee's bulk-import docs and code, and a 135-record output was
+imported into a PheBee instance.
 
-## [1.0.0] - 2026-05-27
+- The aggregated output is named `aggregated.json`, although its content is JSON Lines. PheBee's
+  validator accepts `.jsonl`, but its import jobs only read files ending in `.json` under a
+  `jsonl/` key prefix, so a `.jsonl` upload is silently skipped and the run reports success.
+- `contexts` holds the three flags PheBee reads, `negated`, `family` and `hypothetical`, as
+  booleans. A missing flag is `false`; a value that is not a 0/1 flag (e.g. a score of 0.7)
+  skips that annotation with a warning.
 
-### Initial Release
+### Known limitations
 
-- Local extraction orchestrator for clinical notes
-- Support for JSON, JSONL, Parquet, CSV input formats
-- Tool chaining support (e.g., extraction → context classification)
-- Batch processing with configurable batch sizes
-- GPU support via Docker
-- **PheBee format output by default** - ready for bulk import (streaming transformation)
-- **Flat format option** - note-centric output with --flat-format flag
-- Comprehensive test suite (50 tests: 38 extract unit tests, 12 integration tests)
-- Mock extraction tools for testing
-- INTERFACE.md specification for Docker containers
-- Modern Python tooling: uv package manager, ruff linter/formatter
-- pyproject.toml for standardized project configuration
+- PheBee's bulk import accepts `evidence_creator_digest` and drops it: the evidence table stores
+  only `creator_id`, `creator_type` and `creator_name`. Use immutable image tags for imported
+  runs. The field is named so a future `creator_digest` column can read it unchanged.
+- The whole input is loaded into memory when splitting, batches run sequentially, and there is
+  no resume. Larger or distributed runs are what an orchestrator built on the `StageRunner`
+  interface is for.
+
+### Requirements
+
+- Python 3.9 or later (the CI matrix covers 3.9 to 3.13), and a local Docker daemon for `run`.
