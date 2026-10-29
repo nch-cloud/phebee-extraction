@@ -42,6 +42,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Supported Python is now 3.9+ (3.8 is end-of-life); 3.13 added to the classifiers. A GitHub
+  Actions workflow runs lint and the full test suite, including the Docker integration tests,
+  on every supported version.
 - PheBee-format `contexts` flags are now written as booleans (`true`/`false`) instead of
   floats (`1.0`/`0.0`), since they are boolean concepts. PheBee's bulk import accepts both and
   hashes them identically, so evidence IDs are unaffected. A missing flag is `false`; a value
@@ -50,6 +53,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- INTERFACE.md's example annotation labelled `HP:0001962` as "Chest pain"; that ID is
+  Palpitations. Corrected to `HP:0100749`.
+- Removed the `[tool.pytest.ini_options]` block from pyproject.toml, which duplicated
+  pytest.ini and made pytest warn on every run.
 - The mock extractor missed plainly stated phenotypes in the demo notes (chest pain, hearing
   loss, recurrent ear infections, walking unsteady), so the Try It output had visible gaps and
   no correctly negated finding. It now recognises them, with IDs and labels checked against HPO,

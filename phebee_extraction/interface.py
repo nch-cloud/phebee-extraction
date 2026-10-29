@@ -7,20 +7,20 @@ sees lives here, so the contract has a single home in the code.
 
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any
 
 # Where the batch directory is mounted inside a stage container
 CONTAINER_DATA_DIR = "/data"
 
 
-def write_batch_file(records: List[Dict[str, Any]], output_path: str) -> None:
+def write_batch_file(records: list[dict[str, Any]], output_path: str) -> None:
     """Write batch records to JSON file per INTERFACE.md spec"""
     batch_data = {"records": records}
     with open(output_path, "w") as f:
         json.dump(batch_data, f, indent=2)
 
 
-def read_batch_output(output_path: str) -> Dict[str, Any]:
+def read_batch_output(output_path: str) -> dict[str, Any]:
     """Read and validate batch output JSON"""
     if not os.path.exists(output_path):
         raise FileNotFoundError(f"Batch output file not found: {output_path}")
@@ -32,7 +32,7 @@ def read_batch_output(output_path: str) -> Dict[str, Any]:
     return output
 
 
-def validate_output_format(output: Dict[str, Any]) -> None:
+def validate_output_format(output: dict[str, Any]) -> None:
     """Validate output matches INTERFACE.md specification"""
     if "records" not in output:
         raise ValueError("Output missing required 'records' field")
@@ -46,7 +46,7 @@ def validate_output_format(output: Dict[str, Any]) -> None:
             raise ValueError(f"Output run_metadata missing required field '{required_field}'")
 
 
-def build_container_environment(input_path: str, output_path: str) -> Dict[str, str]:
+def build_container_environment(input_path: str, output_path: str) -> dict[str, str]:
     """
     Build the environment variables passed to a stage container.
 
@@ -65,7 +65,7 @@ def build_container_environment(input_path: str, output_path: str) -> Dict[str, 
 
 
 def merge_original_records(
-    original_records: List[Dict[str, Any]], output_records: List[Dict[str, Any]]
+    original_records: list[dict[str, Any]], output_records: list[dict[str, Any]]
 ) -> None:
     """
     Merge original input fields into tool output records, in place, matching on note_id.

@@ -18,7 +18,7 @@ import json
 import logging
 import os
 import sys
-from typing import List, Optional
+from typing import Optional
 
 from phebee_extraction.batching import create_batches, write_manifest
 from phebee_extraction.docker_runner import DockerRunner
@@ -172,7 +172,7 @@ Other commands (see `%(prog)s <command> --help`):
     return parser
 
 
-def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
     """Parse and validate arguments for the full pipeline (the `run` command)"""
     parser = build_run_parser()
     args = parser.parse_args(argv)
@@ -284,7 +284,7 @@ def build_split_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def parse_split_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_split_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = build_split_parser()
     args = parser.parse_args(argv)
     if args.batch_size < 1:
@@ -351,7 +351,7 @@ def build_transform_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def parse_transform_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_transform_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = build_transform_parser()
     args = parser.parse_args(argv)
     _validate_phebee_output_arguments(parser, args)
@@ -415,7 +415,7 @@ def build_review_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def parse_review_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_review_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = build_review_parser()
     args = parser.parse_args(argv)
     if args.limit is not None and args.limit < 1:
@@ -460,7 +460,7 @@ def review_command(args: argparse.Namespace) -> int:
 # ----------------------------------------------------------------------------
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: Optional[list[str]] = None) -> int:
     """Main entry point"""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 

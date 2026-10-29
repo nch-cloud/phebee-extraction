@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import pandas as pd
 
@@ -40,7 +40,7 @@ def detect_input_format(file_path: str) -> str:
 
 def load_input_data(
     file_path: str, format: str = "auto", id_column: str = "note_id", text_column: str = "text"
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Load clinical notes from various file formats
 
@@ -103,7 +103,7 @@ def load_input_data(
     return records
 
 
-def validate_input_records(records: List[Dict[str, Any]]) -> None:
+def validate_input_records(records: list[dict[str, Any]]) -> None:
     """Validate that records have required fields"""
     if not records:
         raise ValueError("No records found in input file")

@@ -3,7 +3,7 @@
 import json
 import logging
 import os
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from phebee_extraction.interface import write_batch_file
 from phebee_extraction.models import BatchInfo
@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 def create_batches(
-    records: List[Dict[str, Any]], batch_size: int, temp_dir: str
-) -> List[BatchInfo]:
+    records: list[dict[str, Any]], batch_size: int, temp_dir: str
+) -> list[BatchInfo]:
     """Split records into batches and write batch files"""
     os.makedirs(temp_dir, exist_ok=True)
 
@@ -43,7 +43,7 @@ def create_batches(
 
 
 def write_manifest(
-    batches: List[BatchInfo], batch_dir: str, total_records: int, batch_size: int
+    batches: list[BatchInfo], batch_dir: str, total_records: int, batch_size: int
 ) -> str:
     """
     Write manifest.json next to the batch files so an external scheduler can drive them.
@@ -71,7 +71,7 @@ def write_manifest(
     return manifest_path
 
 
-def get_stage_paths(batch: BatchInfo, stage_num: int, num_stages: int) -> Tuple[str, str]:
+def get_stage_paths(batch: BatchInfo, stage_num: int, num_stages: int) -> tuple[str, str]:
     """Determine input/output paths for a pipeline stage"""
     temp_dir = os.path.dirname(batch.input_path)
 

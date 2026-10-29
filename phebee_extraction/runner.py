@@ -8,7 +8,7 @@ cluster scheduler) implement the same protocol and reuse everything else.
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, Protocol
+from typing import Optional, Protocol
 
 
 @dataclass
@@ -29,7 +29,7 @@ class StageResult:
 class StageRunner(Protocol):
     """Protocol implemented by anything that can run a pipeline stage"""
 
-    def prepare(self, images: List[str]) -> List[str]:
+    def prepare(self, images: list[str]) -> list[str]:
         """
         Verify the stage images are available.
 

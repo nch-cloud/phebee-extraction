@@ -6,7 +6,7 @@ import shutil
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 from tqdm import tqdm
 
@@ -25,7 +25,7 @@ class ExecutionContext:
 
     input_file: str
     output_dir: str
-    docker_images: List[str]
+    docker_images: list[str]
     batch_size: int
     gpu: bool
     temp_dir: str
@@ -38,18 +38,18 @@ class ExecutionContext:
     project_id: Optional[str] = None
     subject_id_column: str = "subject_id"
     batch_id: int = 0
-    docker_image_digests: List[str] = field(default_factory=list)
+    docker_image_digests: list[str] = field(default_factory=list)
 
     # Runtime state
     runner: Optional[StageRunner] = None
-    batches: List[BatchInfo] = field(default_factory=list)
+    batches: list[BatchInfo] = field(default_factory=list)
     start_time: datetime = field(default_factory=datetime.now)
     total_records: int = 0
 
-    def get_successful_batches(self) -> List[BatchInfo]:
+    def get_successful_batches(self) -> list[BatchInfo]:
         return [b for b in self.batches if b.status == "success"]
 
-    def get_failed_batches(self) -> List[BatchInfo]:
+    def get_failed_batches(self) -> list[BatchInfo]:
         return [b for b in self.batches if b.status == "failed"]
 
     def has_failures(self) -> bool:

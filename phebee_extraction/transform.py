@@ -8,9 +8,10 @@ can be reused by other orchestrators.
 
 import json
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, TextIO
+from typing import Any, Optional, TextIO
 
 from phebee_extraction.models import BatchInfo
 
@@ -26,7 +27,7 @@ class PheBeeConfig:
     batch_id: int = 0
     # Image references for the tools that produced the annotations, in pipeline order.
     # Each is "name[:tag]" optionally followed by "@sha256:..." (see validate_docker_images).
-    image_refs: List[str] = field(default_factory=list)
+    image_refs: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -87,7 +88,7 @@ def context_flag(value: Any) -> Optional[bool]:
     return None
 
 
-def context_flags(contexts: Optional[Dict[str, Any]]) -> Optional[Dict[str, bool]]:
+def context_flags(contexts: Optional[dict[str, Any]]) -> Optional[dict[str, bool]]:
     """All three context flags as booleans, or None if any value is not a recognisable flag"""
     contexts = contexts or {}
     flags = {}
@@ -99,7 +100,7 @@ def context_flags(contexts: Optional[Dict[str, Any]]) -> Optional[Dict[str, bool
     return flags
 
 
-def evidence_creator_fields(image_refs: List[str]) -> Dict[str, Optional[str]]:
+def evidence_creator_fields(image_refs: list[str]) -> dict[str, Optional[str]]:
     """
     Derive the evidence creator fields from the pipeline's image references.
 
@@ -128,7 +129,7 @@ def evidence_creator_fields(image_refs: List[str]) -> Dict[str, Optional[str]]:
     }
 
 
-def _annotation_span(annotation: Dict[str, Any]):
+def _annotation_span(annotation: dict[str, Any]):
     """Return (start, end) supporting several field-name variants, or (None, None)"""
     # Use explicit None checks to handle start=0 correctly
     span_start = annotation.get("start")
@@ -144,7 +145,7 @@ def _annotation_span(annotation: Dict[str, Any]):
     return span_start, span_end
 
 
-def record_to_phebee_format(record: Dict[str, Any], config: PheBeeConfig) -> List[Dict[str, Any]]:
+def record_to_phebee_format(record: dict[str, Any], config: PheBeeConfig) -> list[dict[str, Any]]:
     """
     Convert a single extraction record to PheBee format records.
     Returns one PheBee record per annotation (streaming approach).
@@ -227,7 +228,7 @@ def record_to_phebee_format(record: Dict[str, Any], config: PheBeeConfig) -> Lis
 
 
 def write_phebee_records(
-    records: Iterable[Dict[str, Any]],
+    records: Iterable[dict[str, Any]],
     config: PheBeeConfig,
     fh: TextIO,
     start_row_num: int = 1,
@@ -265,7 +266,7 @@ def write_phebee_records(
 
 
 def write_phebee_jsonl(
-    batch_outputs: Iterable[Dict[str, Any]],
+    batch_outputs: Iterable[dict[str, Any]],
     config: PheBeeConfig,
     output_file: str,
     start_row_num: int = 1,
@@ -293,8 +294,8 @@ def write_phebee_jsonl(
 
 
 def merge_run_metadata(
-    metadata_list: List[Dict[str, Any]], tools_used: List[str]
-) -> Dict[str, Any]:
+    metadata_list: list[dict[str, Any]], tools_used: list[str]
+) -> dict[str, Any]:
     """
     Merge run_metadata from multiple batches into AWS pipeline-style metadata
 
@@ -323,10 +324,10 @@ def merge_run_metadata(
 
 
 def write_flat_jsonl(
-    batch_outputs: List[Dict[str, Any]],
-    tools_used: List[str],
+    batch_outputs: list[dict[str, Any]],
+    tools_used: list[str],
     output_file: str,
-    failed_batches: Optional[List[BatchInfo]] = None,
+    failed_batches: Optional[list[BatchInfo]] = None,
 ) -> int:
     """
     Write note-centric JSONL: one line per record, then a final `_metadata` line.

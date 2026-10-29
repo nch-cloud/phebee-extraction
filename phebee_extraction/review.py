@@ -9,8 +9,9 @@ followed by what was matched in it.
 import json
 import logging
 from collections import defaultdict
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Iterator, List, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -22,19 +23,19 @@ class Match:
     start: int
     end: int
     term: str  # short form of the term IRI, e.g. HP_0001945
-    contexts: Dict[str, Any]
+    contexts: dict[str, Any]
     subject: Optional[str]
     row_num: int
 
 
-def read_results(path: str) -> Dict[str, List[Match]]:
+def read_results(path: str) -> dict[str, list[Match]]:
     """
     Read a PheBee-format JSONL file and index its matches by note id.
 
     Raises ValueError for a line that is not a PheBee-format record, for example the
     output of --flat-format, instead of silently showing no matches.
     """
-    matches: Dict[str, List[Match]] = defaultdict(list)
+    matches: dict[str, list[Match]] = defaultdict(list)
 
     with open(path) as f:
         for line_number, line in enumerate(f, start=1):
@@ -65,13 +66,13 @@ def read_results(path: str) -> Dict[str, List[Match]]:
     return dict(matches)
 
 
-def _format_contexts(contexts: Dict[str, Any]) -> str:
+def _format_contexts(contexts: dict[str, Any]) -> str:
     return " ".join(f"{key}={json.dumps(value)}" for key, value in contexts.items())
 
 
 def format_review(
-    notes: Iterable[Dict[str, Any]],
-    matches_by_note: Dict[str, List[Match]],
+    notes: Iterable[dict[str, Any]],
+    matches_by_note: dict[str, list[Match]],
     subject_id_column: str = "subject_id",
 ) -> Iterator[str]:
     """
@@ -100,8 +101,8 @@ def format_review(
 
 
 def unmatched_note_ids(
-    notes: Iterable[Dict[str, Any]], matches_by_note: Dict[str, List[Match]]
-) -> List[str]:
+    notes: Iterable[dict[str, Any]], matches_by_note: dict[str, list[Match]]
+) -> list[str]:
     """Note ids that appear in the results but not in the given notes"""
     known = {str(note["note_id"]) for note in notes}
     return sorted(note_id for note_id in matches_by_note if note_id not in known)

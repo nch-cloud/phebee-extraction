@@ -157,7 +157,7 @@ The output file **MUST** be a JSON file conforming to the [output schema](https:
           "start": 46,
           "end": 56,
           "text": "chest pain",
-          "term_id": "HP:0001962",
+          "term_id": "HP:0100749",
           "label": "Chest pain",
           "ontology": "hpo",
           "contexts": {

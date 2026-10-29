@@ -3,7 +3,7 @@
 import logging
 import os
 import time
-from typing import List, Optional
+from typing import Optional
 
 import docker
 
@@ -33,7 +33,7 @@ def _repository(image: str) -> str:
 
 
 def image_reference_with_digest(
-    image: str, repo_digests: Optional[List[str]], image_id: Optional[str]
+    image: str, repo_digests: Optional[list[str]], image_id: Optional[str]
 ) -> str:
     """
     Build the provenance reference for an image: the name exactly as given, plus a digest.
@@ -62,7 +62,7 @@ def image_reference_with_digest(
     return image
 
 
-def validate_docker_images(client: docker.DockerClient, images: List[str]) -> List[str]:
+def validate_docker_images(client: docker.DockerClient, images: list[str]) -> list[str]:
     """
     Verify Docker images exist locally or can be pulled
 
@@ -161,7 +161,7 @@ class DockerRunner:
         self.gpu = gpu
         self.timeout = timeout
 
-    def prepare(self, images: List[str]) -> List[str]:
+    def prepare(self, images: list[str]) -> list[str]:
         return validate_docker_images(self.client, images)
 
     def run_stage(self, image: str, input_path: str, output_path: str) -> StageResult:

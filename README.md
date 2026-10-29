@@ -1,7 +1,7 @@
 # PheBee Extraction (Local)
 
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](LICENSE)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
 Lightweight, local alternative to the enterprise AWS PheBee extraction pipeline. Process clinical notes on a single machine without AWS infrastructure.
 
@@ -21,7 +21,7 @@ PheBee Extraction orchestrates Docker containers to extract phenotype annotation
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.9+
 - Docker Engine 20.10+
 - NVIDIA Docker runtime (for GPU support)
 
