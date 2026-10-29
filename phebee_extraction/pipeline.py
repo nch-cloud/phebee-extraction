@@ -129,7 +129,7 @@ def run_batch_pipeline(ctx: ExecutionContext, batch: BatchInfo, progress: Progre
             return
 
     # All stages succeeded - merge original fields back into output
-    merge_original_fields(batch.input_path, output_path)
+    merge_original_fields(batch.input_path, output_path, batch.merged_path)
 
     batch.status = "success"
     batch.runtime_ms = int((time.time() - batch_start_time) * 1000)
@@ -145,7 +145,9 @@ def aggregate_results(ctx: ExecutionContext, output_file: str) -> None:
         raise ExtractionError("No successful batches to aggregate")
 
     # Read all batch outputs
-    batch_outputs = [read_batch_output(batch.output_path) for batch in successful_batches]
+    batch_outputs = [
+        read_batch_output(batch.merged_path or batch.output_path) for batch in successful_batches
+    ]
 
     if ctx.flat_format:
         write_flat_jsonl(batch_outputs, ctx.docker_images, output_file, ctx.get_failed_batches())

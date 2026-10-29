@@ -7,7 +7,7 @@ sees lives here, so the contract has a single home in the code.
 
 import json
 import os
-from typing import Any
+from typing import Any, Optional
 
 # Where the batch directory is mounted inside a stage container
 CONTAINER_DATA_DIR = "/data"
@@ -84,8 +84,17 @@ def merge_original_records(
                     output_rec[key] = value
 
 
-def merge_original_fields(input_path: str, output_path: str) -> None:
-    """File-level wrapper for merge_original_records: rewrites output_path in place"""
+def merge_original_fields(
+    input_path: str, output_path: str, merged_path: Optional[str] = None
+) -> None:
+    """
+    File-level wrapper for merge_original_records.
+
+    Writes the merged records to merged_path, leaving output_path untouched. Pass a separate
+    merged_path whenever output_path was created by a container: on Linux that file belongs to
+    the container's user (often root), so the host can read it but not rewrite it. With no
+    merged_path, output_path is rewritten in place.
+    """
     with open(input_path) as f:
         input_data = json.load(f)
 
@@ -94,5 +103,5 @@ def merge_original_fields(input_path: str, output_path: str) -> None:
 
     merge_original_records(input_data["records"], output_data["records"])
 
-    with open(output_path, "w") as f:
+    with open(merged_path or output_path, "w") as f:
         json.dump(output_data, f, indent=2)

@@ -53,6 +53,7 @@ files to and from S3, GCS or a shared filesystem is the wrapper's job.
 | `manifest.json` | split | the scheduler | see below |
 | `batch_NNNNNN_stageK.json` | container K | container K+1 | same shape as output, below |
 | `batch_NNNNNN_output.json` | last container | transform | `{"records": [...], "run_metadata": {...}}` ([INTERFACE.md](INTERFACE.md)) |
+| `batch_NNNNNN_merged.json` | `run` (host) | `run`'s aggregation | the same, with the original input fields merged back (see below) |
 | `aggregated.json` / `*.json` | transform | PheBee import, or you | JSON Lines, PheBee or flat format ([README.md](README.md#output-format)). Named `.json` because PheBee's import only reads `*.json` |
 
 `manifest.json`:
@@ -82,6 +83,13 @@ therefore merges the original input record's fields back into each output record
 last stage, matching on `note_id` (`interface.merge_original_records`). Fields the tool did
 write win. If you run the stages yourself, do the same, or pass the batch input files to
 `transform --original-input`.
+
+`run` writes the merged records to a separate `batch_NNNNNN_merged.json` and leaves the
+container's `batch_NNNNNN_output.json` untouched. This is deliberate: on Linux a container
+usually runs as root, so the files it creates in the shared directory belong to root, and the
+host can read them but not rewrite them. The rule for any runner is that **the host never
+opens a file the container created for writing**; it reads it, and writes its own files
+alongside.
 
 ## Where to plug in
 
