@@ -63,7 +63,10 @@ We provide **two mock Docker containers** for testing:
 Keyword-based phenotype extraction for testing.
 
 **What it does:**
-- Finds clinical terms in text: fever, cough, headache, seizure, pneumonia, migraine
+- Finds clinical terms in text from a small built-in list: fever, cough, headache, seizure, pneumonia,
+  migraine, developmental delay, chest pain, hearing loss, recurrent ear infections, walking unsteady
+  (IDs and labels checked against the HPO release used by the ClinPhen image)
+- Reports terms in the order they appear in the note
 - Maps to correct HPO terms
 - Creates realistic annotations with correct span positions
 - Fast (milliseconds, no ML models needed)
@@ -120,11 +123,21 @@ Adds context qualifiers to existing annotations.
 
 **What it does:**
 - Takes annotations from previous tool
-- Detects context keywords around each annotation (±20 characters)
-- Adds qualifiers:
-  - **negated: 1** - Detects: no, denies, denied, negative, without, absence
-  - **family: 1** - Detects: family, mother, father, sibling, hereditary
-  - **hypothetical: 1** - Detects: possible, suspected, may, could, rule out
+- For each annotation, looks at the text *before* it in the *same sentence*, restarting after
+  a scope-breaking word (`but`, `however`, ...). Sentences end at `.` `!` `?` `;` or a newline.
+- Adds qualifiers when a cue appears in that scope:
+  - **negated: 1** - Cues: no, not, denies, denied, negative, without, absence, absent
+  - **family: 1** - Cues: family, mother, father, parent, sibling, hereditary, ...
+  - **hypothetical: 1** - Cues: possible, possibly, suspected, may, could, rule out, r/o, ...
+
+It is a small version of the NegEx idea, not a clinical context model: cues that *follow* a
+term ("seizures in the family") and negation across comma-separated lists are not handled.
+
+**Tested against all sample data.** `context_cases.py` lists the expected flags for every note
+in `examples/`, `tests/fixtures/` and the inline test notes, judged by reading each sentence.
+`test_mock_context.py` checks the mock against them (no Docker), fails if a sample note has no
+expectation, and the chain test in `test_integration.py` checks the same table against the real
+container. When you add sample data, add its expected flags to `context_cases.py`.
 
 **Example:**
 
@@ -305,12 +318,15 @@ Edit `mock_context.py`:
 
 ```python
 SEVERITY_WORDS = {'severe', 'mild', 'moderate'}
+SEVERITY_PATTERN = _phrase_pattern(SEVERITY_WORDS)
 
 def classify_context(text, annotation):
     # ... existing code ...
-    severity = detect_severity(words)
-    annotation['contexts']['severity'] = severity
+    scope = preceding_scope(text, annotation['start'])
+    annotation['contexts']['severity'] = 1 if SEVERITY_PATTERN.search(scope) else 0
 ```
+
+Then add expectations for the new flag to `context_cases.py`, or the tests will not know about it.
 
 ## Coverage Analysis
 

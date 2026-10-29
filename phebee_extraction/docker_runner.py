@@ -25,11 +25,49 @@ def initialize_docker_client() -> docker.DockerClient:
         raise DockerError(f"Failed to connect to Docker daemon: {e}") from e
 
 
+def _repository(image: str) -> str:
+    """Repository part of an image name: strips a ':tag' but not a registry ':port'"""
+    last_segment_start = image.rfind("/") + 1
+    colon = image.find(":", last_segment_start)
+    return image if colon == -1 else image[:colon]
+
+
+def image_reference_with_digest(
+    image: str, repo_digests: Optional[List[str]], image_id: Optional[str]
+) -> str:
+    """
+    Build the provenance reference for an image: the name exactly as given, plus a digest.
+
+    The name (including its tag) is kept verbatim because tags often carry version
+    information. Docker's RepoDigests entries are 'repository@sha256:...' with no tag, so
+    they are used only as a source for the digest, preferring the entry whose repository
+    matches the image. Without any registry digest (e.g. a locally built image), the local
+    image ID is used. Returns the bare name if no digest can be determined.
+    """
+    if "@" in image:
+        return image  # already pinned to a digest
+
+    digests = [d for d in (repo_digests or []) if "@" in d]
+    chosen = next((d for d in digests if d.split("@", 1)[0] == _repository(image)), None)
+    if chosen is None and digests:
+        chosen = digests[0]
+    if chosen is not None:
+        return f"{image}@{chosen.split('@', 1)[1]}"
+
+    if image_id:
+        digest = image_id if image_id.startswith("sha256:") else f"sha256:{image_id}"
+        return f"{image}@{digest}"
+
+    logger.warning(f"Could not determine digest for {image}, using name only")
+    return image
+
+
 def validate_docker_images(client: docker.DockerClient, images: List[str]) -> List[str]:
     """
     Verify Docker images exist locally or can be pulled
 
-    Returns list of image references with digests (image@sha256:...)
+    Returns one reference per image, in order: the name as given plus its digest
+    (name[:tag]@sha256:...). See image_reference_with_digest.
     """
     image_digests = []
 
@@ -46,21 +84,9 @@ def validate_docker_images(client: docker.DockerClient, images: List[str]) -> Li
             except docker.errors.DockerException as e:
                 raise DockerError(f"Failed to pull Docker image {image}: {e}") from e
 
-        # Get the image digest (RepoDigests is a list, take first if available)
-        if img.attrs.get("RepoDigests"):
-            # Use the full digest reference from registry
-            digest_ref = img.attrs["RepoDigests"][0]
-            image_digests.append(digest_ref)
-        elif img.id:
-            # Fall back to local image ID if no registry digest
-            # Format: image@sha256:...
-            image_id = img.id.replace("sha256:", "")
-            digest_ref = f"{image}@sha256:{image_id}"
-            image_digests.append(digest_ref)
-        else:
-            # Should never happen, but fallback to original name
-            logger.warning(f"Could not determine digest for {image}, using name only")
-            image_digests.append(image)
+        image_digests.append(
+            image_reference_with_digest(image, img.attrs.get("RepoDigests"), img.id)
+        )
 
     return image_digests
 
@@ -76,8 +102,9 @@ def run_single_stage(
     """Run Docker container for a single pipeline stage"""
     start_time = time.time()
 
-    # Prepare volume mounts
-    temp_dir = os.path.dirname(input_path)
+    # Prepare volume mounts. The host path must be absolute: Docker reads a relative source
+    # as a named volume and rejects it, which broke relative --output directories.
+    temp_dir = os.path.abspath(os.path.dirname(input_path))
     volumes = {temp_dir: {"bind": CONTAINER_DATA_DIR, "mode": "rw"}}
 
     environment = build_container_environment(input_path, output_path)

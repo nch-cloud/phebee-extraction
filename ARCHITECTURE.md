@@ -239,7 +239,8 @@ phebee_extraction/
   transform.py      PheBeeConfig, record_to_phebee_format, write_phebee_jsonl,
                     write_flat_jsonl, evidence_creator_fields
   pipeline.py       ExecutionContext, run_batch_pipeline, aggregate_results (local loop)
-  cli.py            run / split / transform commands
+  review.py         read_results, format_review: join PheBee output back to the input notes
+  cli.py            run / split / transform / review commands
   models.py         BatchInfo and exceptions
 extract.py          thin entry point; re-exports the package API
 ```

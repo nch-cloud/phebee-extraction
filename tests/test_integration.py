@@ -14,9 +14,11 @@ from pathlib import Path
 import docker
 import pytest
 
-# Add parent directory to path
+# Add parent directory (for extract.py) and this directory (for context_cases.py) to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
+from context_cases import CASES  # noqa: E402
 
 # ============================================================================
 # Fixtures
@@ -34,46 +36,34 @@ def docker_client():
         pytest.skip("Docker daemon not available")
 
 
+def _build_mock_image(docker_client, dockerfile, image_tag):
+    """
+    Build a mock tool image and return its tag.
+
+    Always builds rather than reusing an image that already has the tag: Docker's layer cache
+    makes an unchanged build fast, and reusing a tag would test edits to the mock scripts
+    against a stale image.
+    """
+    print(f"Building mock image: {image_tag}")
+    _, build_logs = docker_client.images.build(
+        path=str(Path(__file__).parent), dockerfile=dockerfile, tag=image_tag, rm=True
+    )
+    for log in build_logs:
+        if "stream" in log:
+            print(log["stream"].strip())
+    return image_tag
+
+
 @pytest.fixture(scope="session")
 def mock_extractor_image(docker_client):
     """Build mock extractor Docker image (keyword-based extraction)"""
-    test_dir = Path(__file__).parent
-    image_tag = "phebee-mock-extractor:test"
-
-    try:
-        docker_client.images.get(image_tag)
-        print(f"Using existing image: {image_tag}")
-    except docker.errors.ImageNotFound:
-        print(f"Building mock extractor image: {image_tag}")
-        image, build_logs = docker_client.images.build(
-            path=str(test_dir), dockerfile="Dockerfile.mock", tag=image_tag, rm=True
-        )
-        for log in build_logs:
-            if "stream" in log:
-                print(log["stream"].strip())
-
-    return image_tag
+    return _build_mock_image(docker_client, "Dockerfile.mock", "phebee-mock-extractor:test")
 
 
 @pytest.fixture(scope="session")
 def context_classifier_image(docker_client):
     """Build mock context classifier Docker image"""
-    test_dir = Path(__file__).parent
-    image_tag = "phebee-mock-context:test"
-
-    try:
-        docker_client.images.get(image_tag)
-        print(f"Using existing image: {image_tag}")
-    except docker.errors.ImageNotFound:
-        print(f"Building mock context classifier image: {image_tag}")
-        image, build_logs = docker_client.images.build(
-            path=str(test_dir), dockerfile="Dockerfile.mock-context", tag=image_tag, rm=True
-        )
-        for log in build_logs:
-            if "stream" in log:
-                print(log["stream"].strip())
-
-    return image_tag
+    return _build_mock_image(docker_client, "Dockerfile.mock-context", "phebee-mock-context:test")
 
 
 @pytest.fixture
@@ -241,28 +231,21 @@ def test_end_to_end_chained_tools(mock_extractor_image, context_classifier_image
 
     assert len(lines) == 6  # 5 records + metadata
 
-    # Verify context classification worked
-    # Note 1 should have negated annotations (Denies)
-    note1 = json.loads(lines[0])
-    if note1["note_id"] == "ctx_001":
-        # "fever" and "cough" should be near "Denies"
-        for ann in note1["annotations"]:
-            if ann["text"] in ["fever", "cough"]:
-                assert "contexts" in ann, "Context missing from annotation"
-                # Note: context window might not catch "Denies" for these
-                # Just verify contexts field exists
-                assert "negated" in ann["contexts"]
-                assert "family" in ann["contexts"]
-                assert "hypothetical" in ann["contexts"]
-
-    # Find note 2 (family history)
-    for line in lines[:-1]:  # Skip metadata
-        note = json.loads(line)
-        if note["note_id"] == "ctx_002":
-            # "migraines" should have family=1
-            for ann in note["annotations"]:
-                if ann["text"] == "migraines":
-                    assert ann["contexts"]["family"] == 1, "Should detect family history"
+    # Every note's context flags must match the expectations in tests/context_cases.py
+    expected_by_text = dict(CASES)
+    records = [json.loads(line) for line in lines[:-1]]  # Skip metadata
+    assert len(records) == len(test_notes)
+    for record in records:
+        got = [
+            (
+                ann["text"],
+                ann["contexts"]["negated"],
+                ann["contexts"]["family"],
+                ann["contexts"]["hypothetical"],
+            )
+            for ann in sorted(record["annotations"], key=lambda a: a["start"])
+        ]
+        assert got == expected_by_text[record["text"]], record["note_id"]
 
 
 def test_container_failure_handling(docker_client, sample_input_file, temp_workspace):

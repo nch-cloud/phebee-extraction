@@ -23,9 +23,13 @@ KEYWORD_MAP = {
     "seizure": ("HP:0001250", "Seizure"),
     "seizures": ("HP:0001250", "Seizure"),
     "pneumonia": ("HP:0002090", "Pneumonia"),
-    "developmental delay": ("HP:0001263", "Developmental delay"),
+    "developmental delay": ("HP:0001263", "Global developmental delay"),
     "migraine": ("HP:0002076", "Migraine"),
     "migraines": ("HP:0002076", "Migraine"),
+    "chest pain": ("HP:0100749", "Chest pain"),
+    "hearing loss": ("HP:0000365", "Hearing impairment"),
+    "recurrent ear infections": ("HP:0410018", "Recurrent ear infections"),
+    "walking unsteady": ("HP:0002317", "Unsteady gait"),
 }
 
 
@@ -48,7 +52,8 @@ def extract_annotations(text):
                 }
             )
 
-    return annotations
+    # Report terms in the order they appear in the note
+    return sorted(annotations, key=lambda a: a["start"])
 
 
 def main():

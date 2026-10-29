@@ -4,6 +4,7 @@ commands that let an external scheduler drive the pipeline. No Docker required.
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -13,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from phebee_extraction import cli  # noqa: E402
 from phebee_extraction.batching import create_batches  # noqa: E402
+from phebee_extraction.docker_runner import image_reference_with_digest  # noqa: E402
 from phebee_extraction.interface import merge_original_records  # noqa: E402
 from phebee_extraction.models import BatchProcessingError  # noqa: E402
 from phebee_extraction.pipeline import (  # noqa: E402
@@ -21,6 +23,7 @@ from phebee_extraction.pipeline import (  # noqa: E402
     run_batch_pipeline,
 )
 from phebee_extraction.runner import StageResult  # noqa: E402
+from phebee_extraction.transform import evidence_creator_fields  # noqa: E402
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -171,6 +174,90 @@ def test_pipeline_treats_missing_output_as_failure(tmp_path):
     assert ctx.batches[0].status == "failed"
     assert "did not write" in ctx.batches[0].error_message
     assert len(runner.calls) == 1  # pipeline stopped before stage 2
+
+
+def test_run_single_stage_mounts_an_absolute_host_path(tmp_path, monkeypatch):
+    """A relative --output used to produce a relative mount source, which Docker rejects"""
+    from unittest.mock import MagicMock
+
+    from phebee_extraction.docker_runner import run_single_stage
+
+    monkeypatch.chdir(tmp_path)
+    client = MagicMock()
+    container = client.containers.run.return_value
+    container.wait.return_value = {"StatusCode": 0}
+    container.logs.return_value = b""
+
+    relative_in = "results/.temp_batches_x/batch_000001_input.json"
+    relative_out = "results/.temp_batches_x/batch_000001_output.json"
+    result = run_single_stage(client, "tool:1", relative_in, relative_out, False, 0)
+
+    assert result.ok
+    (mount_source,) = client.containers.run.call_args.kwargs["volumes"].keys()
+    assert os.path.isabs(mount_source)
+    assert mount_source == str(tmp_path / "results/.temp_batches_x")
+    # in-container paths are unaffected: just the file names under /data
+    env = client.containers.run.call_args.kwargs["environment"]
+    assert env["INPUT_URI"] == "/data/batch_000001_input.json"
+
+
+REAL_NAME = "ods/phebee-clinphen:batch-v1.0.0_clinphen-1.28_hpo-v2025-10-22_c58cc41"
+
+
+def test_image_reference_keeps_tag_and_takes_registry_digest():
+    """The tag carries version info and must survive; RepoDigests only supplies the digest"""
+    ref = image_reference_with_digest(
+        REAL_NAME, ["ods/phebee-clinphen@sha256:aaa"], "sha256:imageid"
+    )
+    assert ref == f"{REAL_NAME}@sha256:aaa"
+
+
+def test_image_reference_prefers_matching_repository():
+    ref = image_reference_with_digest(
+        "myrepo/tool:1.0", ["other/tool@sha256:bbb", "myrepo/tool@sha256:ccc"], None
+    )
+    assert ref == "myrepo/tool:1.0@sha256:ccc"
+
+
+def test_image_reference_falls_back_to_first_digest_when_no_repository_matches():
+    # e.g. the daemon normalises the repository name differently from what was typed
+    ref = image_reference_with_digest("tool:1.0", ["docker.io/library/tool@sha256:ddd"], None)
+    assert ref == "tool:1.0@sha256:ddd"
+
+
+def test_image_reference_registry_port_is_not_mistaken_for_a_tag():
+    ref = image_reference_with_digest(
+        "localhost:5000/tool", ["localhost:5000/tool@sha256:eee"], "sha256:imageid"
+    )
+    assert ref == "localhost:5000/tool@sha256:eee"
+
+
+def test_image_reference_uses_image_id_for_local_images():
+    """Locally built images have no RepoDigests; the local image ID stands in"""
+    assert image_reference_with_digest("clinphen:latest", [], "sha256:abc123") == (
+        "clinphen:latest@sha256:abc123"
+    )
+    assert image_reference_with_digest("clinphen:latest", None, "abc123") == (
+        "clinphen:latest@sha256:abc123"
+    )
+
+
+def test_image_reference_already_pinned_is_unchanged():
+    pinned = "tool@sha256:fff"
+    assert image_reference_with_digest(pinned, ["tool@sha256:other"], "sha256:x") == pinned
+
+
+def test_image_reference_without_any_digest_is_the_bare_name():
+    assert image_reference_with_digest("clinphen:latest", None, None) == "clinphen:latest"
+
+
+def test_creator_fields_keep_the_full_tag():
+    """End to end through the creator fields: a tagged real-world name is preserved"""
+    ref = image_reference_with_digest(REAL_NAME, ["ods/phebee-clinphen@sha256:aaa"], None)
+    fields = evidence_creator_fields([ref])
+    assert fields["evidence_creator_id"] == REAL_NAME
+    assert fields["evidence_creator_name"] == REAL_NAME
+    assert fields["evidence_creator_digest"] == "sha256:aaa"
 
 
 def test_merge_original_records_output_takes_precedence():

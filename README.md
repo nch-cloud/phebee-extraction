@@ -68,14 +68,75 @@ dependencies = [
 
 The public API is what `phebee_extraction.__all__` exports (`from phebee_extraction import PheBeeConfig, write_phebee_jsonl, ...`). Module-level names not listed there may change between minor versions.
 
+### Try It (No Model Required)
+
+The repo includes small keyword-based mock tools, so you can see the whole flow work before setting up a real extraction image. This needs only Docker and the sample files in [examples/](examples/):
+
+```bash
+# Build the mock extractor and mock context classifier
+docker build -f tests/Dockerfile.mock -t phebee-mock-extractor:test tests/
+docker build -f tests/Dockerfile.mock-context -t phebee-mock-context:test tests/
+
+# Extract, in PheBee format (the sample input includes subject_id)
+python extract.py \
+  --input examples/sample_notes_with_subjects.jsonl \
+  --output results/ \
+  --docker-images phebee-mock-extractor:test \
+  --project-id demo
+
+# Or chain extraction -> context classification
+python extract.py \
+  --input examples/sample_notes_with_subjects.jsonl \
+  --output results-chained/ \
+  --docker-images phebee-mock-extractor:test,phebee-mock-context:test \
+  --project-id demo
+```
+
+Each run writes `aggregated.jsonl` (11 records from the 5 sample notes). The mock tools find phenotypes by matching a small built-in list of terms, so the results are only useful for checking the plumbing, not as real extractions.
+
+**Reading the results against the original notes.** Each PheBee-format record points back to its note and the matched span, so `review` can join the results to the input file and show each note with what was matched in it:
+
+```bash
+python extract.py review \
+  --results results-chained/aggregated.jsonl \
+  --input examples/sample_notes_with_subjects.jsonl
+```
+
+which prints each note followed by its matches (`[start:end] "matched text"  term  contexts`):
+
+```
+note_001 (patient-001): Patient presents with fever and cough. Denies chest pain.
+    [22:27] "fever"  HP_0001945  negated=0.0 family=0.0 hypothetical=0.0
+    [32:37] "cough"  HP_0012735  negated=0.0 family=0.0 hypothetical=0.0
+    [46:56] "chest pain"  HP_0100749  negated=1.0 family=0.0 hypothetical=0.0
+
+note_002 (patient-001): Patient admitted with pneumonia and requires supplemental oxygen.
+    [22:31] "pneumonia"  HP_0002090  negated=0.0 family=0.0 hypothetical=0.0
+
+note_003 (patient-002): Chronic headaches, possibly migraine. Family history of seizures.
+    [8:17] "headaches"  HP_0002315  negated=0.0 family=0.0 hypothetical=0.0
+    [28:36] "migraine"  HP_0002076  negated=0.0 family=0.0 hypothetical=1.0
+    [56:64] "seizures"  HP_0001250  negated=0.0 family=1.0 hypothetical=0.0
+
+note_004 (patient-003): Developmental delay noted at 18 months. Walking unsteady.
+    [0:19] "Developmental delay"  HP_0001263  negated=0.0 family=0.0 hypothetical=0.0
+    [40:56] "Walking unsteady"  HP_0002317  negated=0.0 family=0.0 hypothetical=0.0
+
+note_005 (patient-003): Recurrent ear infections. No hearing loss detected.
+    [0:24] "Recurrent ear infections"  HP_0410018  negated=0.0 family=0.0 hypothetical=0.0
+    [29:41] "hearing loss"  HP_0000365  negated=1.0 family=0.0 hypothetical=0.0
+```
+
+Notes are listed in input order, and a note with no matches would still appear, with nothing under it. Note how the context flags follow the sentence: "possibly" marks only `migraine`, "Family history" marks only `seizures`, "Denies chest pain" negates `chest pain` but not `fever` or `cough` (a different sentence), and "No hearing loss" negates `hearing loss` but not the ear infections. The mock classifier is a small cue-word model that gets the sample notes right; it is not a real clinical context tool.
+
 ### Basic Usage
 
-**PheBee format (default)** - Ready for PheBee bulk import:
+**PheBee format (default)** - Ready for PheBee bulk import. The input needs a subject identifier per note (`subject_id` by default, or name another column with `--subject-id-column`); notes without one are skipped:
 
 ```bash
 # Single extraction tool
 python extract.py \
-  --input examples/sample_notes.jsonl \
+  --input examples/sample_notes_with_subjects.jsonl \
   --output results/ \
   --docker-images fasthpocr:batch-latest \
   --project-id my-project
@@ -161,6 +222,21 @@ python extract.py transform \
 - `--image-ref` supplies the provenance that `run` captures automatically. Pass the full `name:tag@sha256:...` reference for each tool in pipeline order.
 - `--start-row-num` lets you write one part file per batch with non-overlapping `row_num` values.
 - `--flat-format` produces the note-centric format instead; `--project-id` is then not required.
+
+### Reviewing Results
+
+`review` shows PheBee-format results next to the original notes: each note, then every matched span with its text, term and context flags. Pass the results file and the same input file that was extracted, with the same column options:
+
+```bash
+python extract.py review --results results/aggregated.jsonl --input notes.csv \
+  --id-column note_id --text-column note_text
+```
+
+- `--note-id ID [ID ...]` shows only those notes; `--limit N` shows the first N.
+- Notes are listed in input order, including notes with no matches.
+- It warns if the results mention notes that are not in `--input` (usually the wrong input file).
+- Flat-format output (`--flat-format`) already contains the text and annotations, and is rejected with an explanatory error.
+- The results file is read into memory, which is fine for reviewing a sample and not meant for very large outputs.
 
 ## Input Formats
 
@@ -296,7 +372,9 @@ uv run pytest tests/ -v
 
 # Run specific test files
 uv run pytest tests/test_extract.py -v           # Unit tests (38 tests)
-uv run pytest tests/test_stages.py -v            # Runner / split / transform tests (14 tests)
+uv run pytest tests/test_stages.py -v            # Runner / split / transform tests (23 tests)
+uv run pytest tests/test_mock_context.py -v      # Mock context classifier on all sample data (33 tests)
+uv run pytest tests/test_review.py -v            # review command (12 tests)
 uv run pytest tests/test_integration.py -v       # Integration tests with Docker (12 tests)
 
 # Run with coverage
@@ -321,14 +399,18 @@ phebee_extraction/        # Implementation, one module per pipeline stage
   docker_runner.py        #   StageRunner implementation on local Docker
   transform.py            #   tool output -> PheBee or flat JSONL
   pipeline.py             #   local end-to-end orchestration
-  cli.py                  #   run / split / transform commands
+  review.py               #   join results to notes for the review command
+  cli.py                  #   run / split / transform / review commands
   models.py               #   BatchInfo and exceptions
 pyproject.toml            # Project metadata and dependencies
 INTERFACE.md              # Docker container interface spec
 examples/                 # Sample data
-tests/                    # Unit and integration tests (64 tests)
+tests/                    # Unit and integration tests (118 tests)
   test_extract.py         # Unit tests (38 tests)
-  test_stages.py          # Runner protocol, split, transform (14 tests, no Docker)
+  test_stages.py          # Runner protocol, split, transform (23 tests, no Docker)
+  test_mock_context.py    # Mock context classifier vs. expected flags (33 tests, no Docker)
+  context_cases.py        # Expected context flags for every sample note
+  test_review.py          # review command (12 tests, no Docker)
   test_integration.py     # Integration tests with Docker (12 tests)
 ```
 

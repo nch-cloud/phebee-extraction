@@ -1,11 +1,12 @@
 """
 Command-line entry point.
 
-Three commands:
+Four commands:
 
     extract.py [run] ...   full local pipeline: load -> batch -> run containers -> aggregate
     extract.py split ...   load notes and write batch files (plus manifest.json) and stop
     extract.py transform   convert tool output files into PheBee or flat JSONL
+    extract.py review ...  show PheBee-format results next to the original notes
 
 ``run`` is the default when no command is given, so the original ``extract.py --input ...``
 invocation is unchanged. ``split`` and ``transform`` exist so an external scheduler can run
@@ -33,11 +34,12 @@ from phebee_extraction.pipeline import (
     run_batch_pipeline,
     temp_dir_for,
 )
+from phebee_extraction.review import format_review, read_results, unmatched_note_ids
 from phebee_extraction.transform import PheBeeConfig, write_flat_jsonl, write_phebee_jsonl
 
 logger = logging.getLogger(__name__)
 
-SUBCOMMANDS = ("run", "split", "transform")
+SUBCOMMANDS = ("run", "split", "transform", "review")
 
 
 def _prog() -> str:
@@ -50,7 +52,7 @@ def _prog() -> str:
 # ----------------------------------------------------------------------------
 
 
-def _add_input_arguments(parser: argparse.ArgumentParser) -> None:
+def _add_input_arguments(parser: argparse.ArgumentParser, batch_size: bool = True) -> None:
     parser.add_argument("--input", required=True, help="Input file (JSON/JSONL/Parquet/CSV)")
     parser.add_argument(
         "--input-format",
@@ -68,9 +70,13 @@ def _add_input_arguments(parser: argparse.ArgumentParser) -> None:
         default="text",
         help="Column name for note text in CSV/Parquet (default: text)",
     )
-    parser.add_argument(
-        "--batch-size", type=int, default=1000, help="Number of notes per batch (default: 1000)"
-    )
+    if batch_size:
+        parser.add_argument(
+            "--batch-size",
+            type=int,
+            default=1000,
+            help="Number of notes per batch (default: 1000)",
+        )
 
 
 def _add_phebee_output_arguments(parser: argparse.ArgumentParser) -> None:
@@ -132,6 +138,7 @@ Examples:
 Other commands (see `%(prog)s <command> --help`):
   split       write batch files for an external scheduler to run
   transform   convert tool output files into PheBee or flat JSONL
+  review      show PheBee-format results next to the original notes
         """,
     )
 
@@ -381,6 +388,74 @@ def transform_command(args: argparse.Namespace) -> int:
 
 
 # ----------------------------------------------------------------------------
+# review
+# ----------------------------------------------------------------------------
+
+
+def build_review_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=f"{_prog()} review",
+        description="Show PheBee-format results next to the original notes: each note, then "
+        "the text matched for every term, with its span and context flags. Reads the results "
+        "of `run` (aggregated.jsonl) and the same input file that was extracted.",
+    )
+    parser.add_argument(
+        "--results", required=True, help="PheBee-format results file (aggregated.jsonl)"
+    )
+    _add_input_arguments(parser, batch_size=False)
+    parser.add_argument(
+        "--subject-id-column",
+        default="subject_id",
+        help="Input column for subject ID, used for notes with no results (default: subject_id)",
+    )
+    parser.add_argument(
+        "--note-id", nargs="+", help="Only show these notes (default: all, in input order)"
+    )
+    parser.add_argument("--limit", type=int, help="Show at most this many notes")
+    return parser
+
+
+def parse_review_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    parser = build_review_parser()
+    args = parser.parse_args(argv)
+    if args.limit is not None and args.limit < 1:
+        parser.error("--limit must be >= 1")
+    return args
+
+
+def review_command(args: argparse.Namespace) -> int:
+    notes = load_input_data(
+        args.input,
+        format=args.input_format,
+        id_column=args.id_column,
+        text_column=args.text_column,
+    )
+    validate_input_records(notes)
+    matches_by_note = read_results(args.results)
+
+    missing = unmatched_note_ids(notes, matches_by_note)
+    if missing:
+        logger.warning(
+            f"{len(missing)} note(s) in the results are not in --input and cannot be shown "
+            f"(is this the file that was extracted?): {', '.join(missing[:5])}"
+            + (" ..." if len(missing) > 5 else "")
+        )
+
+    if args.note_id:
+        wanted = set(args.note_id)
+        absent = sorted(wanted - {str(n["note_id"]) for n in notes})
+        if absent:
+            logger.warning(f"--note-id not found in --input: {', '.join(absent)}")
+        notes = [n for n in notes if str(n["note_id"]) in wanted]
+    if args.limit is not None:
+        notes = notes[: args.limit]
+
+    for line in format_review(notes, matches_by_note, args.subject_id_column):
+        print(line)
+    return 0
+
+
+# ----------------------------------------------------------------------------
 # dispatch
 # ----------------------------------------------------------------------------
 
@@ -403,6 +478,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             return split_command(parse_split_arguments(rest))
         if command == "transform":
             return transform_command(parse_transform_arguments(rest))
+        if command == "review":
+            return review_command(parse_review_arguments(rest))
         return run_command(parse_arguments(rest))
 
     except Exception as e:
