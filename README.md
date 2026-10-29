@@ -106,25 +106,25 @@ which prints each note followed by its matches (`[start:end] "matched text"  ter
 
 ```
 note_001 (patient-001): Patient presents with fever and cough. Denies chest pain.
-    [22:27] "fever"  HP_0001945  negated=0.0 family=0.0 hypothetical=0.0
-    [32:37] "cough"  HP_0012735  negated=0.0 family=0.0 hypothetical=0.0
-    [46:56] "chest pain"  HP_0100749  negated=1.0 family=0.0 hypothetical=0.0
+    [22:27] "fever"  HP_0001945  negated=false family=false hypothetical=false
+    [32:37] "cough"  HP_0012735  negated=false family=false hypothetical=false
+    [46:56] "chest pain"  HP_0100749  negated=true family=false hypothetical=false
 
 note_002 (patient-001): Patient admitted with pneumonia and requires supplemental oxygen.
-    [22:31] "pneumonia"  HP_0002090  negated=0.0 family=0.0 hypothetical=0.0
+    [22:31] "pneumonia"  HP_0002090  negated=false family=false hypothetical=false
 
 note_003 (patient-002): Chronic headaches, possibly migraine. Family history of seizures.
-    [8:17] "headaches"  HP_0002315  negated=0.0 family=0.0 hypothetical=0.0
-    [28:36] "migraine"  HP_0002076  negated=0.0 family=0.0 hypothetical=1.0
-    [56:64] "seizures"  HP_0001250  negated=0.0 family=1.0 hypothetical=0.0
+    [8:17] "headaches"  HP_0002315  negated=false family=false hypothetical=false
+    [28:36] "migraine"  HP_0002076  negated=false family=false hypothetical=true
+    [56:64] "seizures"  HP_0001250  negated=false family=true hypothetical=false
 
 note_004 (patient-003): Developmental delay noted at 18 months. Walking unsteady.
-    [0:19] "Developmental delay"  HP_0001263  negated=0.0 family=0.0 hypothetical=0.0
-    [40:56] "Walking unsteady"  HP_0002317  negated=0.0 family=0.0 hypothetical=0.0
+    [0:19] "Developmental delay"  HP_0001263  negated=false family=false hypothetical=false
+    [40:56] "Walking unsteady"  HP_0002317  negated=false family=false hypothetical=false
 
 note_005 (patient-003): Recurrent ear infections. No hearing loss detected.
-    [0:24] "Recurrent ear infections"  HP_0410018  negated=0.0 family=0.0 hypothetical=0.0
-    [29:41] "hearing loss"  HP_0000365  negated=1.0 family=0.0 hypothetical=0.0
+    [0:24] "Recurrent ear infections"  HP_0410018  negated=false family=false hypothetical=false
+    [29:41] "hearing loss"  HP_0000365  negated=true family=false hypothetical=false
 ```
 
 Notes are listed in input order, and a note with no matches would still appear, with nothing under it. Note how the context flags follow the sentence: "possibly" marks only `migraine`, "Family history" marks only `seizures`, "Denies chest pain" negates `chest pain` but not `fever` or `cough` (a different sentence), and "No hearing loss" negates `hearing loss` but not the ear infections. The mock classifier is a small cue-word model that gets the sample notes right; it is not a real clinical context tool.
@@ -288,6 +288,8 @@ Output is written as JSONL (`aggregated.jsonl`) with one record per annotation, 
 
 Each line represents one (subject, term) pair with associated evidence. Multiple annotations of the same term for the same subject appear on separate lines.
 
+The `contexts` object holds three boolean flags, `negated`, `family` and `hypothetical`, written as `true`/`false`. A missing flag is written as `false`. PheBee's bulk import reads exactly these three flags (it ignores any other context key, so they are not written) and treats `true`, `1` and `1.0` the same, so the boolean form does not change how evidence is identified. A context value that is not a recognisable flag, such as a score of `0.7`, causes that annotation to be skipped with a warning.
+
 ### Flat Format (--flat-format)
 
 Output is written as JSONL (`aggregated.jsonl`) with one record per note:
@@ -375,6 +377,7 @@ uv run pytest tests/test_extract.py -v           # Unit tests (38 tests)
 uv run pytest tests/test_stages.py -v            # Runner / split / transform tests (23 tests)
 uv run pytest tests/test_mock_context.py -v      # Mock context classifier on all sample data (33 tests)
 uv run pytest tests/test_review.py -v            # review command (12 tests)
+uv run pytest tests/test_context_flags.py -v     # Boolean context flags (30 tests)
 uv run pytest tests/test_integration.py -v       # Integration tests with Docker (12 tests)
 
 # Run with coverage
@@ -405,12 +408,13 @@ phebee_extraction/        # Implementation, one module per pipeline stage
 pyproject.toml            # Project metadata and dependencies
 INTERFACE.md              # Docker container interface spec
 examples/                 # Sample data
-tests/                    # Unit and integration tests (118 tests)
+tests/                    # Unit and integration tests (148 tests)
   test_extract.py         # Unit tests (38 tests)
   test_stages.py          # Runner protocol, split, transform (23 tests, no Docker)
   test_mock_context.py    # Mock context classifier vs. expected flags (33 tests, no Docker)
   context_cases.py        # Expected context flags for every sample note
   test_review.py          # review command (12 tests, no Docker)
+  test_context_flags.py   # boolean context flags in PheBee output (30 tests, no Docker)
   test_integration.py     # Integration tests with Docker (12 tests)
 ```
 

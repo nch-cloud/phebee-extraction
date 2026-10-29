@@ -40,6 +40,14 @@ All notable changes to this project will be documented in this file.
   alongside the legacy `INPUT_S3_URI`/`OUTPUT_S3_URI` names (same values). The legacy names
   are deprecated in INTERFACE.md; containers should prefer the neutral names.
 
+### Changed
+
+- PheBee-format `contexts` flags are now written as booleans (`true`/`false`) instead of
+  floats (`1.0`/`0.0`), since they are boolean concepts. PheBee's bulk import accepts both and
+  hashes them identically, so evidence IDs are unaffected. A missing flag is `false`; a value
+  that is not a 0/1 flag (e.g. a score of 0.7) skips that annotation with a warning instead of
+  being passed through. `review` prints context values as JSON (`true`/`false`).
+
 ### Fixed
 
 - The mock extractor missed plainly stated phenotypes in the demo notes (chest pain, hearing

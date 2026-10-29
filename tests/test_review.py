@@ -69,8 +69,13 @@ def test_review_shows_each_note_with_its_matches(sample_review):
         lines[0]
         == "note_001 (patient-001): Patient presents with fever and cough. Denies chest pain."
     )
-    assert lines[1] == ('    [22:27] "fever"  HP_0001945  negated=0.0 family=0.0 hypothetical=0.0')
-    assert '    [46:56] "chest pain"  HP_0100749  negated=1.0 family=0.0 hypothetical=0.0' in lines
+    assert lines[1] == (
+        '    [22:27] "fever"  HP_0001945  negated=false family=false hypothetical=false'
+    )
+    assert (
+        '    [46:56] "chest pain"  HP_0100749  negated=true family=false hypothetical=false'
+        in lines
+    )
     # notes are separated by a blank line and listed in input order
     note_headers = [line.split(" (")[0] for line in lines if line.startswith("note_")]
     assert note_headers == [f"note_00{i}" for i in range(1, 6)]
@@ -111,12 +116,12 @@ def test_review_reads_csv_with_custom_columns_and_numeric_ids(tmp_path, capsys):
     assert lines[0] == f"2209509581 (3520819): {text}"
     fever, seizures = text.index("fever"), text.index("seizures")
     assert (
-        f'    [{fever}:{fever + 5}] "fever"  HP_0001945  negated=1.0 family=0.0 hypothetical=0.0'
+        f'    [{fever}:{fever + 5}] "fever"  HP_0001945  negated=true family=false hypothetical=false'
         in lines
     )
     assert (
         f'    [{seizures}:{seizures + 8}] "seizures"  HP_0001250  '
-        "negated=0.0 family=0.0 hypothetical=1.0" in lines
+        "negated=false family=false hypothetical=true" in lines
     )
     assert "2209509582 (3520819): Mother had migraines." in lines
 

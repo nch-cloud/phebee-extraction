@@ -244,6 +244,8 @@ The `contexts` object contains qualifiers that modify the interpretation of the 
 
 **Note:** The `contexts` field is optional and only present when annotations have been processed by a context classifier.
 
+**In PheBee-format output** (written by `extract.py`), `contexts` contains only `negated`, `family` and `hypothetical`, as booleans (`true`/`false`). PheBee's bulk import reads exactly those three flags and ignores other keys; it accepts `1`/`0` and `1.0`/`0.0` as equivalent, so tools may emit integers as above. A value that is not a 0/1 flag (for example a score) is not converted: that annotation is skipped with a warning.
+
 #### Run Metadata
 
 | Field | Type | Required | Description |

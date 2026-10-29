@@ -55,6 +55,50 @@ def term_id_to_iri(term_id: str) -> str:
     return f"http://purl.obolibrary.org/obo/{obo_id}"
 
 
+# The context flags PheBee's bulk import reads; any other key in `contexts` is ignored by it
+CONTEXT_FLAGS = ("negated", "family", "hypothetical")
+
+
+def context_flag(value: Any) -> Optional[bool]:
+    """
+    Interpret one context value as a boolean flag, the way PheBee's bulk import does.
+
+    None (null or absent) is False, matching PheBee, which treats a missing flag as false.
+    True/False, 1/0, 1.0/0.0 and the strings "true"/"false" (any case) are accepted.
+    Returns None for anything else, e.g. a score like 0.7, so the caller can decide what to
+    do instead of silently rounding it.
+    """
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        if value == 0:
+            return False
+        if value == 1:
+            return True
+        return None
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in ("true", "1", "1.0"):
+            return True
+        if lowered in ("false", "0", "0.0"):
+            return False
+    return None
+
+
+def context_flags(contexts: Optional[Dict[str, Any]]) -> Optional[Dict[str, bool]]:
+    """All three context flags as booleans, or None if any value is not a recognisable flag"""
+    contexts = contexts or {}
+    flags = {}
+    for name in CONTEXT_FLAGS:
+        flag = context_flag(contexts.get(name))
+        if flag is None:
+            return None
+        flags[name] = flag
+    return flags
+
+
 def evidence_creator_fields(image_refs: List[str]) -> Dict[str, Optional[str]]:
     """
     Derive the evidence creator fields from the pipeline's image references.
@@ -144,13 +188,14 @@ def record_to_phebee_format(record: Dict[str, Any], config: PheBeeConfig) -> Lis
             )
             continue
 
-        # Convert contexts integers to floats
-        contexts = annotation.get("contexts", {})
-        contexts_floats = {
-            "negated": float(contexts.get("negated", 0)),
-            "family": float(contexts.get("family", 0)),
-            "hypothetical": float(contexts.get("hypothetical", 0)),
-        }
+        # Context flags are boolean concepts, so write them as booleans
+        flags = context_flags(annotation.get("contexts"))
+        if flags is None:
+            logger.warning(
+                f"Annotation in note {note_id} has a context value that is not a 0/1 flag "
+                f"({annotation.get('contexts')}), skipping"
+            )
+            continue
 
         # Create evidence item
         evidence_item = {
@@ -164,7 +209,7 @@ def record_to_phebee_format(record: Dict[str, Any], config: PheBeeConfig) -> Lis
             "author_specialty": record.get("author_specialty"),
             "span_start": int(span_start),
             "span_end": int(span_end),
-            "contexts": contexts_floats,
+            "contexts": flags,
         }
 
         # Create PheBee record with single evidence item (row_num will be set by caller)

@@ -66,7 +66,7 @@ def read_results(path: str) -> Dict[str, List[Match]]:
 
 
 def _format_contexts(contexts: Dict[str, Any]) -> str:
-    return " ".join(f"{key}={value}" for key, value in contexts.items())
+    return " ".join(f"{key}={json.dumps(value)}" for key, value in contexts.items())
 
 
 def format_review(

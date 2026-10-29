@@ -545,7 +545,7 @@ def test_aggregate_phebee_format(sample_batch_outputs, tmp_path):
     assert rec1["evidence"][0]["evidence_creator_id"] == "test:latest"
     assert rec1["evidence"][0]["evidence_creator_name"] == "test:latest"
     assert rec1["evidence"][0]["evidence_creator_digest"] == "sha256:abc123"
-    assert rec1["evidence"][0]["contexts"]["negated"] == 0.0
+    assert rec1["evidence"][0]["contexts"]["negated"] is False
     assert rec1["row_num"] == 1
     assert rec1["batch_id"] == 0
 
@@ -553,14 +553,14 @@ def test_aggregate_phebee_format(sample_batch_outputs, tmp_path):
     rec2 = json.loads(lines[1])
     assert rec2["project_subject_id"] == "subj-001"
     assert rec2["term_iri"] == "http://purl.obolibrary.org/obo/HP_0012735"
-    assert rec2["evidence"][0]["contexts"]["negated"] == 1.0
+    assert rec2["evidence"][0]["contexts"]["negated"] is True
     assert rec2["row_num"] == 2
 
     # Check third record (different subject)
     rec3 = json.loads(lines[2])
     assert rec3["project_subject_id"] == "subj-002"
     assert rec3["term_iri"] == "http://purl.obolibrary.org/obo/HP_0002315"
-    assert rec3["evidence"][0]["contexts"]["family"] == 1.0
+    assert rec3["evidence"][0]["contexts"]["family"] is True
     assert rec3["row_num"] == 3
 
 
