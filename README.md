@@ -183,7 +183,7 @@ python extract.py \
 - `--subject-id-column`: Input column name for subject ID (default: subject_id)
 - `--batch-id`: PheBee batch identifier (default: 0)
 
-**Note on Provenance**: The `evidence_creator_id` and `evidence_creator_name` are automatically derived from the Docker image names/tags used in the pipeline. The `evidence_creator_digest` field contains the SHA256 digests for reproducibility. For tool chaining, both fields use `+` as a separator (e.g., `evidence_creator_id: "fasthpocr:latest+phenocontext:latest"` and `evidence_creator_digest: "sha256:abc...+sha256:def..."`).
+**Note on Provenance**: `evidence_creator_id` and `evidence_creator_name` are derived from the Docker image names and tags in the pipeline, and `evidence_creator_digest` from their SHA256 digests; chained tools are joined with `+` in pipeline order (e.g. `fasthpocr:latest+phenocontext:latest` and `sha256:abc...+sha256:def...`). PheBee stores the id and name but currently drops the digest, so use immutable tags for imported runs. See [Creator fields](#creator-fields-and-evidence_creator_digest) for the field contract.
 
 ### Processing Options
 
@@ -289,6 +289,28 @@ Output is written as JSONL (`aggregated.json`) with one record per annotation, r
 Each line represents one (subject, term) pair with associated evidence. Multiple annotations of the same term for the same subject appear on separate lines.
 
 The `contexts` object holds three boolean flags, `negated`, `family` and `hypothetical`, written as `true`/`false`. A missing flag is written as `false`. PheBee's bulk import reads exactly these three flags (it ignores any other context key, so they are not written) and treats `true`, `1` and `1.0` the same, so the boolean form does not change how evidence is identified. A context value that is not a recognisable flag, such as a score of `0.7`, causes that annotation to be skipped with a warning.
+
+#### Creator fields and `evidence_creator_digest`
+
+Each evidence item carries four creator fields, all derived from the Docker images in the pipeline, in pipeline order:
+
+| Field | Type | Value for images `a:1` then `b:2` |
+|---|---|---|
+| `evidence_creator_id` | string | `a:1+b:2` (image names exactly as given, including tags) |
+| `evidence_creator_name` | string | same as `evidence_creator_id` |
+| `evidence_creator_type` | string | always `automated` |
+| `evidence_creator_digest` | string or null | `sha256:<hex>+sha256:<hex>`, one digest per image |
+
+`evidence_creator_digest` is this tool's addition to the PheBee format. Its contract:
+
+- One `sha256:<64 hex>` per image, in the same order as `evidence_creator_id`, joined with `+`, so the *n*-th segment of each field describes the same image.
+- `null` if the digest of any image could not be determined; never a partial list.
+- The digest is the registry manifest digest when the image was pulled (Docker's `RepoDigests`; for a cloud runner, the registry's `describe-images` equivalent). For an image built locally and never pushed, it falls back to the local image ID, which identifies the build on that machine but will not match a registry.
+
+**PheBee does not store this field yet.** Bulk import accepts the record and drops the field: the evidence table's `creator` struct holds only `creator_id`, `creator_type` and `creator_name`. The name follows PheBee's `evidence_creator_*` → `creator_*` convention so that a future `creator_digest` column can read it without any change here. Until then, two practical consequences:
+
+- Use **immutable tags** for anything you import. With `clinphen:latest`, PheBee records only `clinphen:latest`, and two imports from different builds of `latest` are indistinguishable in the table. A tag like `ods/phebee-clinphen:batch-v1.0.0_clinphen-1.28_hpo-v2025-10-22_c58cc41` identifies the build by itself.
+- **Keep the uploaded file.** It is the only place the digest is recorded for that run.
 
 ### Flat Format (--flat-format)
 

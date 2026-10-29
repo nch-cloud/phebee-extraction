@@ -176,9 +176,17 @@ the runner's `prepare` returns, in pipeline order:
 | `evidence_creator_digest` | `sha256:x+sha256:y`, or `null` if any image lacks a digest |
 
 The same tool chain therefore always yields the same `evidence_creator_id`, and the digest
-pins exactly which builds ran. `DockerRunner.prepare` takes digests from the local Docker
+records exactly which builds ran. `DockerRunner.prepare` takes digests from the local Docker
 daemon; a cloud runner should take them from its registry (for ECR, `describe-images`).
 When driving `transform` from the command line, pass the same references with `--image-ref`.
+
+`evidence_creator_digest` is this tool's addition to the PheBee format, and PheBee's bulk
+import currently accepts and drops it: the evidence table stores `creator_id`, `creator_type`
+and `creator_name` only. The field is named to PheBee's `evidence_creator_*` → `creator_*`
+convention so a future `creator_digest` column can read it unchanged. Until that exists, the
+digest lives only in the uploaded file, and the tag in `evidence_creator_id` is the only
+provenance PheBee keeps; prefer immutable tags for imported runs. The field contract is in
+[README.md](README.md#creator-fields-and-evidence_creator_digest).
 
 ## Ordering and `row_num`
 

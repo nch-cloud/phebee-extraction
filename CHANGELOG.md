@@ -27,6 +27,10 @@ All notable changes to this project will be documented in this file.
   README's displayed output is exactly what the command prints.
 - `ARCHITECTURE.md`: the split / run / transform model, artifacts, the `StageRunner`
   contract, provenance, and where other orchestrators plug in.
+- README: a specification of `evidence_creator_digest` (format, ordering, null semantics,
+  digest source), noting that PheBee's bulk import currently accepts and drops the field, that
+  it is named so a future `creator_digest` column can read it unchanged, and that imported runs
+  should use immutable tags until then.
 
 ### Changed
 
