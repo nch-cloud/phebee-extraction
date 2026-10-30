@@ -1,7 +1,6 @@
 """Shared data structures and exceptions."""
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -14,12 +13,12 @@ class BatchInfo:
     output_path: str
     record_count: int
     status: str = "pending"  # 'pending'|'running'|'success'|'failed'
-    error_message: Optional[str] = None
-    runtime_ms: Optional[int] = None
+    error_message: str | None = None
+    runtime_ms: int | None = None
     # Where `run` writes the final output merged with the original input fields. Separate from
     # output_path because a container may create that file as another user (root on Linux),
     # in which case the host can read it but not rewrite it.
-    merged_path: Optional[str] = None
+    merged_path: str | None = None
 
 
 class ExtractionError(Exception):

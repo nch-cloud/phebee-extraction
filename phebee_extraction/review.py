@@ -11,7 +11,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class Match:
     end: int
     term: str  # short form of the term IRI, e.g. HP_0001945
     contexts: dict[str, Any]
-    subject: Optional[str]
+    subject: str | None
     row_num: int
 
 

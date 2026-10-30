@@ -8,7 +8,7 @@ cluster scheduler) implement the same protocol and reuse everything else.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Protocol
+from typing import Protocol
 
 
 @dataclass
@@ -19,7 +19,7 @@ class StageResult:
     exit_code: int
     logs: str
     runtime_ms: int
-    error: Optional[str] = None
+    error: str | None = None
 
     @property
     def ok(self) -> bool:

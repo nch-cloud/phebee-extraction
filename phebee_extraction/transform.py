@@ -8,12 +8,14 @@ can be reused by other orchestrators.
 
 import json
 import logging
+import os
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional, TextIO
+from itertools import chain
+from typing import Any, TextIO
 
-from phebee_extraction.models import BatchInfo
+from phebee_extraction.models import BatchInfo, ExtractionError
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +26,6 @@ class PheBeeConfig:
 
     project_id: str
     subject_id_column: str = "subject_id"
-    batch_id: int = 0
     # Image references for the tools that produced the annotations, in pipeline order.
     # Each is "name[:tag]" optionally followed by "@sha256:..." (see validate_docker_images).
     image_refs: list[str] = field(default_factory=list)
@@ -35,9 +36,9 @@ class PheBeeWriteStats:
     """Counts from a PheBee JSONL write"""
 
     records_written: int = 0
+    records_seen: int = 0  # records without a tool error
     skipped_no_subject: int = 0
     skipped_no_annotations: int = 0
-    next_row_num: int = 1
 
 
 def term_id_to_iri(term_id: str) -> str:
@@ -60,7 +61,7 @@ def term_id_to_iri(term_id: str) -> str:
 CONTEXT_FLAGS = ("negated", "family", "hypothetical")
 
 
-def context_flag(value: Any) -> Optional[bool]:
+def context_flag(value: Any) -> bool | None:
     """
     Interpret one context value as a boolean flag, the way PheBee's bulk import does.
 
@@ -88,7 +89,7 @@ def context_flag(value: Any) -> Optional[bool]:
     return None
 
 
-def context_flags(contexts: Optional[dict[str, Any]]) -> Optional[dict[str, bool]]:
+def context_flags(contexts: dict[str, Any] | None) -> dict[str, bool] | None:
     """All three context flags as booleans, or None if any value is not a recognisable flag"""
     contexts = contexts or {}
     flags = {}
@@ -100,7 +101,7 @@ def context_flags(contexts: Optional[dict[str, Any]]) -> Optional[dict[str, bool
     return flags
 
 
-def evidence_creator_fields(image_refs: list[str]) -> dict[str, Optional[str]]:
+def evidence_creator_fields(image_refs: list[str]) -> dict[str, str | None]:
     """
     Derive the evidence creator fields from the pipeline's image references.
 
@@ -149,7 +150,7 @@ def record_to_phebee_format(record: dict[str, Any], config: PheBeeConfig) -> lis
     """
     Convert a single extraction record to PheBee format records.
     Returns one PheBee record per annotation (streaming approach).
-    Note: row_num will be set by the caller.
+    Note: row_num (the line number within the output file) is set by the caller.
     """
     phebee_records = []
 
@@ -213,13 +214,12 @@ def record_to_phebee_format(record: dict[str, Any], config: PheBeeConfig) -> lis
             "contexts": flags,
         }
 
-        # Create PheBee record with single evidence item (row_num will be set by caller)
+        # Create PheBee record with single evidence item (row_num is set by the caller)
         phebee_record = {
             "project_id": config.project_id,
             "project_subject_id": subject_id,
             "term_iri": term_id_to_iri(term_id),
             "evidence": [evidence_item],
-            "batch_id": config.batch_id,
         }
 
         phebee_records.append(phebee_record)
@@ -231,19 +231,21 @@ def write_phebee_records(
     records: Iterable[dict[str, Any]],
     config: PheBeeConfig,
     fh: TextIO,
-    start_row_num: int = 1,
 ) -> PheBeeWriteStats:
     """
     Stream tool-output records to an open file as PheBee JSONL (one line per annotation).
 
-    Records with an error, no subject, or no annotations are skipped and counted.
+    `row_num` is the 1-based line number within this file. PheBee's import does not read it;
+    it is there so a record can be referred to ("line 57 of part 3"). Records with an error,
+    no subject, or no annotations are skipped and counted.
     """
-    stats = PheBeeWriteStats(next_row_num=start_row_num)
+    stats = PheBeeWriteStats()
 
     for record in records:
         # Skip records with errors
         if record.get("error"):
             continue
+        stats.records_seen += 1
 
         # Check for subject_id
         if not record.get(config.subject_id_column):
@@ -257,10 +259,9 @@ def write_phebee_records(
 
         # Transform to PheBee format (one record per annotation)
         for phebee_record in record_to_phebee_format(record, config):
-            phebee_record["row_num"] = stats.next_row_num
-            fh.write(json.dumps(phebee_record) + "\n")
             stats.records_written += 1
-            stats.next_row_num += 1
+            phebee_record["row_num"] = stats.records_written
+            fh.write(json.dumps(phebee_record) + "\n")
 
     return stats
 
@@ -269,18 +270,22 @@ def write_phebee_jsonl(
     batch_outputs: Iterable[dict[str, Any]],
     config: PheBeeConfig,
     output_file: str,
-    start_row_num: int = 1,
 ) -> PheBeeWriteStats:
-    """Write the records from a sequence of tool outputs to a PheBee JSONL file"""
-    totals = PheBeeWriteStats(next_row_num=start_row_num)
-
+    """Write the records from a sequence of tool outputs to one PheBee JSONL file"""
+    records = chain.from_iterable(output["records"] for output in batch_outputs)
     with open(output_file, "w") as f:
-        for output in batch_outputs:
-            stats = write_phebee_records(output["records"], config, f, totals.next_row_num)
-            totals.records_written += stats.records_written
-            totals.skipped_no_subject += stats.skipped_no_subject
-            totals.skipped_no_annotations += stats.skipped_no_annotations
-            totals.next_row_num = stats.next_row_num
+        totals = write_phebee_records(records, config, f)
+
+    # A whole run with no subjects is a misconfiguration, not an empty result: fail instead of
+    # leaving a plausible-looking empty file behind.
+    if totals.records_seen and totals.skipped_no_subject == totals.records_seen:
+        os.remove(output_file)
+        raise ExtractionError(
+            f"None of the {totals.records_seen} notes has a value in "
+            f"{config.subject_id_column!r}, which PheBee format needs for every note. Pass "
+            "--subject-id-column with the column that identifies the subject, or use "
+            "--flat-format."
+        )
 
     logger.info(f"Wrote {totals.records_written} PheBee records to {output_file}")
     if totals.skipped_no_subject > 0:
@@ -327,7 +332,7 @@ def write_flat_jsonl(
     batch_outputs: list[dict[str, Any]],
     tools_used: list[str],
     output_file: str,
-    failed_batches: Optional[list[BatchInfo]] = None,
+    failed_batches: list[BatchInfo] | None = None,
 ) -> int:
     """
     Write note-centric JSONL: one line per record, then a final `_metadata` line.

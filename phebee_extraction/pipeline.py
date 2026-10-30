@@ -6,7 +6,6 @@ import shutil
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 from tqdm import tqdm
 
@@ -40,13 +39,12 @@ class ExecutionContext:
 
     # Output format options
     flat_format: bool = False
-    project_id: Optional[str] = None
+    project_id: str | None = None
     subject_id_column: str = "subject_id"
-    batch_id: int = 0
     docker_image_digests: list[str] = field(default_factory=list)
 
     # Runtime state
-    runner: Optional[StageRunner] = None
+    runner: StageRunner | None = None
     batches: list[BatchInfo] = field(default_factory=list)
     start_time: datetime = field(default_factory=datetime.now)
     total_records: int = 0
@@ -67,7 +65,6 @@ class ExecutionContext:
         return PheBeeConfig(
             project_id=self.project_id,
             subject_id_column=self.subject_id_column,
-            batch_id=self.batch_id,
             image_refs=self.docker_image_digests,
         )
 
@@ -198,7 +195,7 @@ Output file:        {output_file}
     return summary
 
 
-def temp_dir_for(output_dir: str, explicit: Optional[str] = None) -> str:
+def temp_dir_for(output_dir: str, explicit: str | None = None) -> str:
     """Resolve the temp directory: an explicit path, or a timestamped dir under output_dir"""
     if explicit:
         return explicit

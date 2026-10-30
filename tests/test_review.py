@@ -99,7 +99,9 @@ def test_review_reads_csv_with_custom_columns_and_numeric_ids(tmp_path, capsys):
         "3520819,2209509581,NICU RT shift note. No fever noted. Possible seizures.\n"
         "3520819,2209509582,Mother had migraines.\n"
     )
-    notes = load_input_data(str(csv_path), id_column="note_id", text_column="note_text")
+    notes = load_input_data(
+        str(csv_path), id_column="note_id", text_column="note_text", string_columns={"mrn"}
+    )
     results = write_results(tmp_path, notes, subject_id_column="mrn")
 
     rc, out = run_review(
