@@ -344,8 +344,7 @@ python extract.py \
   --input notes.jsonl \
   --output results/ \
   --docker-images tool1:latest,tool2:latest,tool3:latest \
-  --project-id my-project \
-  --evidence-creator-id my-extractor
+  --project-id my-project
 ```
 
 Each batch goes through all pipeline stages sequentially. Common pattern:
