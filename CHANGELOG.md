@@ -4,26 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Changed
-
-- Python 3.11 or later is required (3.9 and 3.10 are end-of-life); CI covers 3.11 to 3.14.
-- Identifier columns converted to strings are now the ones you name, not a built-in list of
-  organisation-specific column names (`mrn`, `pat_id`, ...). `note_id`, `encounter_id` and the
-  `--subject-id-column` are always converted; `--string-columns` names any others. `split`
-  gained `--subject-id-column` so batch files carry a string subject.
-- `row_num` is now simply the 1-based line number within each output file, and the top-level
-  `batch_id` field and `--batch-id` flag are gone. Neither was used by PheBee's import (it never
-  reads `row_num` and overwrites `batch_id` with the source file name), so the machinery for
-  globally unique row numbers (`transform --start-row-num`) is removed too.
-- Development status is declared as Beta until the tool has been used outside its home
-  organisation.
-- A PheBee-format run in which no note has a subject now fails with an error naming
-  `--subject-id-column`, instead of succeeding with an empty output file.
-
-## [1.0.0] - 2026-10-29
+## [1.0.0] - 2026-10-30
 
 First release. A lightweight, local alternative to the AWS PheBee extraction pipeline: it runs
 extraction containers over clinical notes on a single machine and writes PheBee-ready output.
+Declared Beta until it has been used outside its home organisation.
 
 ### Features
 
@@ -33,16 +18,22 @@ extraction containers over clinical notes on a single machine and writes PheBee-
     the results.
   - `split`: write batch files plus a `manifest.json`, for an external scheduler to run.
   - `transform`: convert tool output files to PheBee or flat JSONL, with `--original-input` to
-    merge back fields a tool dropped, `--image-ref` for provenance, and `--start-row-num` for
-    per-batch part files.
+    merge back fields a tool dropped and `--image-ref` for provenance. Call it once per batch
+    to write one part file per batch.
   - `review`: show PheBee-format results next to the original notes (each note, then every
     matched span with its text, term and context flags).
 - **Input formats**: JSON, JSONL, CSV and Parquet, with `--id-column`, `--text-column` and
-  `--subject-id-column` for tabular data. Numeric IDs are converted to strings.
+  `--subject-id-column` for tabular data. Identifier columns are converted to strings, because
+  containers validate identifiers as text and tabular readers turn numeric-looking ids into
+  numbers: `note_id`, `encounter_id` and the subject column always, and any others named with
+  `--string-columns`. There is no built-in list of column names to guess from.
 - **Tool chaining**: run containers in sequence per batch (e.g. extraction, then context
   classification), batching, GPU support, per-stage timeouts, and `--continue-on-error`.
 - **PheBee format output by default**, ready for bulk import, streamed one record at a time.
-  `--flat-format` gives note-centric output with a `_metadata` line instead.
+  `--flat-format` gives note-centric output with a `_metadata` line instead. A PheBee-format
+  run in which no note has a subject fails with an error naming `--subject-id-column`, rather
+  than succeeding with an empty file; notes that individually lack one are skipped with a
+  warning.
 - **Provenance**: `evidence_creator_id` and `evidence_creator_name` are derived from the Docker
   image names and tags (chained tools joined with `+`), and `evidence_creator_digest` from their
   SHA256 digests. Original input fields, such as the subject identifier, are merged back into
@@ -70,6 +61,9 @@ imported into a PheBee instance.
 - `contexts` holds the three flags PheBee reads, `negated`, `family` and `hypothetical`, as
   booleans. A missing flag is `false`; a value that is not a 0/1 flag (e.g. a score of 0.7)
   skips that annotation with a warning.
+- Each record's `row_num` is its 1-based line number within the file, for referring to a record.
+  PheBee's import does not read it, so part files written separately may each start at 1. There
+  is no top-level `batch_id`: PheBee replaces that field with the source file name.
 
 ### Known limitations
 
@@ -82,4 +76,4 @@ imported into a PheBee instance.
 
 ### Requirements
 
-- Python 3.9 or later (the CI matrix covers 3.9 to 3.13), and a local Docker daemon for `run`.
+- Python 3.11 or later (the CI matrix covers 3.11 to 3.14), and a local Docker daemon for `run`.
