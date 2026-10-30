@@ -4,6 +4,7 @@ commands that let an external scheduler drive the pipeline. No Docker required.
 """
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -365,7 +366,7 @@ def tool_output():
 
 
 def test_transform_phebee_with_original_input(tmp_path, tool_output):
-    """Subject comes from --original-input; creator fields from --image-ref; row_num offset"""
+    """Subject comes from --original-input; creator fields from --image-ref; row_num is the line number"""
     note_id = tool_output["records"][0]["note_id"]
     original = tmp_path / "orig.json"
     with open(original, "w") as f:
@@ -385,15 +386,13 @@ def test_transform_phebee_with_original_input(tmp_path, tool_output):
             "proj",
             "--image-ref",
             "tool:1@sha256:abc",
-            "--start-row-num",
-            "5",
         ]
     )
     assert rc == 0
 
     lines = [json.loads(line) for line in out.read_text().splitlines()]
     assert len(lines) == len(tool_output["records"][0]["annotations"])
-    assert [line["row_num"] for line in lines] == list(range(5, 5 + len(lines)))
+    assert [line["row_num"] for line in lines] == list(range(1, 1 + len(lines)))
     first = lines[0]
     assert first["project_id"] == "proj"
     assert first["project_subject_id"] == "subj-9"
@@ -403,23 +402,26 @@ def test_transform_phebee_with_original_input(tmp_path, tool_output):
     assert ev["clinical_note_id"] == note_id
 
 
-def test_transform_phebee_without_subject_writes_nothing(tmp_path):
+def test_transform_phebee_without_any_subject_fails_loudly(tmp_path, caplog):
+    """Forgetting --original-input (or the subject column) must not look like an empty result"""
     out = tmp_path / "part.jsonl"
-    rc = cli.main(
-        [
-            "transform",
-            "--input",
-            str(FIXTURES / "sample_output.json"),
-            "--output",
-            str(out),
-            "--project-id",
-            "proj",
-            "--image-ref",
-            "tool:1",
-        ]
-    )
-    assert rc == 0
-    assert out.read_text() == ""
+    with caplog.at_level(logging.ERROR):
+        rc = cli.main(
+            [
+                "transform",
+                "--input",
+                str(FIXTURES / "sample_output.json"),
+                "--output",
+                str(out),
+                "--project-id",
+                "proj",
+                "--image-ref",
+                "tool:1",
+            ]
+        )
+    assert rc == 1
+    assert "--subject-id-column" in caplog.text
+    assert not out.exists()
 
 
 def test_transform_flat_format(tmp_path, tool_output):

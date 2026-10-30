@@ -18,7 +18,6 @@ import json
 import logging
 import os
 import sys
-from typing import Optional
 
 from phebee_extraction.batching import create_batches, write_manifest
 from phebee_extraction.docker_runner import DockerRunner
@@ -71,6 +70,12 @@ def _add_input_arguments(parser: argparse.ArgumentParser, batch_size: bool = Tru
         default="text",
         help="Column name for note text in CSV/Parquet (default: text)",
     )
+    parser.add_argument(
+        "--string-columns",
+        default="",
+        help="Comma-separated input columns to convert to strings, e.g. numeric identifiers a "
+        "tool expects as text. note_id, encounter_id and the subject column are always converted.",
+    )
     if batch_size:
         parser.add_argument(
             "--batch-size",
@@ -78,6 +83,13 @@ def _add_input_arguments(parser: argparse.ArgumentParser, batch_size: bool = Tru
             default=1000,
             help="Number of notes per batch (default: 1000)",
         )
+
+
+def _string_columns(args: argparse.Namespace) -> set[str]:
+    """Columns the loader converts to strings: --string-columns plus the subject column"""
+    columns = {c.strip() for c in args.string_columns.split(",") if c.strip()}
+    columns.add(args.subject_id_column)
+    return columns
 
 
 def _add_phebee_output_arguments(parser: argparse.ArgumentParser) -> None:
@@ -94,12 +106,6 @@ def _add_phebee_output_arguments(parser: argparse.ArgumentParser) -> None:
         "--subject-id-column",
         default="subject_id",
         help="Input column name for subject ID (default: subject_id)",
-    )
-    parser.add_argument(
-        "--batch-id",
-        type=int,
-        default=0,
-        help="PheBee batch identifier (default: 0)",
     )
 
 
@@ -173,7 +179,7 @@ Other commands (see `%(prog)s <command> --help`):
     return parser
 
 
-def parse_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
+def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse and validate arguments for the full pipeline (the `run` command)"""
     parser = build_run_parser()
     args = parser.parse_args(argv)
@@ -215,7 +221,6 @@ def run_command(args: argparse.Namespace) -> int:
         flat_format=args.flat_format,
         project_id=args.project_id,
         subject_id_column=args.subject_id_column,
-        batch_id=args.batch_id,
     )
 
     # Initialize the stage runner (local Docker)
@@ -229,6 +234,7 @@ def run_command(args: argparse.Namespace) -> int:
         format=args.input_format,
         id_column=args.id_column,
         text_column=args.text_column,
+        string_columns=_string_columns(args),
     )
     validate_input_records(records)
     ctx.total_records = len(records)
@@ -282,10 +288,15 @@ def build_split_parser() -> argparse.ArgumentParser:
     )
     _add_input_arguments(parser)
     parser.add_argument("--output-dir", required=True, help="Directory to write batch files into")
+    parser.add_argument(
+        "--subject-id-column",
+        default="subject_id",
+        help="Input column for subject ID, converted to a string (default: subject_id)",
+    )
     return parser
 
 
-def parse_split_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
+def parse_split_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser = build_split_parser()
     args = parser.parse_args(argv)
     if args.batch_size < 1:
@@ -299,6 +310,7 @@ def split_command(args: argparse.Namespace) -> int:
         format=args.input_format,
         id_column=args.id_column,
         text_column=args.text_column,
+        string_columns=_string_columns(args),
     )
     validate_input_records(records)
 
@@ -342,17 +354,11 @@ def build_transform_parser() -> argparse.ArgumentParser:
         "ideally with digests (name:tag@sha256:...). Used for evidence creator fields "
         "(PheBee format) and tools_used (flat format). Required unless --flat-format.",
     )
-    parser.add_argument(
-        "--start-row-num",
-        type=int,
-        default=1,
-        help="First row_num to assign (default: 1). Use when writing one part file per batch.",
-    )
     _add_phebee_output_arguments(parser)
     return parser
 
 
-def parse_transform_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
+def parse_transform_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser = build_transform_parser()
     args = parser.parse_args(argv)
     _validate_phebee_output_arguments(parser, args)
@@ -360,8 +366,6 @@ def parse_transform_arguments(argv: Optional[list[str]] = None) -> argparse.Name
         parser.error("--image-ref is required unless --flat-format is specified")
     if args.original_input and len(args.original_input) != len(args.input):
         parser.error("--original-input must list one file per --input, in the same order")
-    if args.start_row_num < 1:
-        parser.error("--start-row-num must be >= 1")
     return args
 
 
@@ -369,7 +373,7 @@ def transform_command(args: argparse.Namespace) -> int:
     outputs = [read_batch_output(path) for path in args.input]
 
     if args.original_input:
-        for output, original_path in zip(outputs, args.original_input):
+        for output, original_path in zip(outputs, args.original_input, strict=True):
             with open(original_path) as f:
                 original_records = json.load(f)["records"]
             merge_original_records(original_records, output["records"])
@@ -380,10 +384,9 @@ def transform_command(args: argparse.Namespace) -> int:
         config = PheBeeConfig(
             project_id=args.project_id,
             subject_id_column=args.subject_id_column,
-            batch_id=args.batch_id,
             image_refs=args.image_ref,
         )
-        write_phebee_jsonl(outputs, config, args.output, start_row_num=args.start_row_num)
+        write_phebee_jsonl(outputs, config, args.output)
 
     return 0
 
@@ -416,7 +419,7 @@ def build_review_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def parse_review_arguments(argv: Optional[list[str]] = None) -> argparse.Namespace:
+def parse_review_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser = build_review_parser()
     args = parser.parse_args(argv)
     if args.limit is not None and args.limit < 1:
@@ -430,6 +433,7 @@ def review_command(args: argparse.Namespace) -> int:
         format=args.input_format,
         id_column=args.id_column,
         text_column=args.text_column,
+        string_columns=_string_columns(args),
     )
     validate_input_records(notes)
     matches_by_note = read_results(args.results)
@@ -461,7 +465,7 @@ def review_command(args: argparse.Namespace) -> int:
 # ----------------------------------------------------------------------------
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     """Main entry point"""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 

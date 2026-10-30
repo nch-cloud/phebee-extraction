@@ -3,7 +3,6 @@
 import logging
 import os
 import time
-from typing import Optional
 
 import docker
 
@@ -33,7 +32,7 @@ def _repository(image: str) -> str:
 
 
 def image_reference_with_digest(
-    image: str, repo_digests: Optional[list[str]], image_id: Optional[str]
+    image: str, repo_digests: list[str] | None, image_id: str | None
 ) -> str:
     """
     Build the provenance reference for an image: the name exactly as given, plus a digest.
@@ -153,7 +152,7 @@ class DockerRunner:
 
     def __init__(
         self,
-        client: Optional[docker.DockerClient] = None,
+        client: docker.DockerClient | None = None,
         gpu: bool = False,
         timeout: int = 3600,
     ):

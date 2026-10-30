@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -10,18 +11,10 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# Common ID fields that may be numeric in input data but must be strings for the
-# container JSON schema
-ID_FIELDS = [
-    "note_id",
-    "subject_id",
-    "pat_id",
-    "mrn",
-    "encounter_id",
-    "enc_id",
-    "note_csn_id",
-    "raw_note_id",
-]
+# Identifier fields converted to strings on every load. Containers validate identifiers as
+# strings, and CSV/Parquet readers turn numeric-looking ids into numbers. The subject column
+# and any other identifier columns are named by the caller (string_columns).
+ALWAYS_STRING_FIELDS = ("note_id", "encounter_id")
 
 
 def detect_input_format(file_path: str) -> str:
@@ -39,12 +32,18 @@ def detect_input_format(file_path: str) -> str:
 
 
 def load_input_data(
-    file_path: str, format: str = "auto", id_column: str = "note_id", text_column: str = "text"
+    file_path: str,
+    format: str = "auto",
+    id_column: str = "note_id",
+    text_column: str = "text",
+    string_columns: Iterable[str] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Load clinical notes from various file formats
 
-    Returns list of note dictionaries with 'note_id' and 'text' keys
+    Returns list of note dictionaries with 'note_id' and 'text' keys. Identifier fields are
+    converted to strings: note_id, encounter_id, and every column named in string_columns
+    (the subject column at least; pass any other numeric identifier a tool expects as text).
     """
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Input file not found: {file_path}")
@@ -92,12 +91,12 @@ def load_input_data(
     else:
         raise ValueError(f"Unsupported format: {format}")
 
-    # Convert common ID fields to strings (they may be numeric in input data)
-    # This ensures compatibility with Docker container JSON schema validation
+    # Convert identifier fields to strings (they may be numeric in input data)
+    to_string = set(ALWAYS_STRING_FIELDS) | set(string_columns or ())
     for record in records:
-        for id_field in ID_FIELDS:
-            if id_field in record and record[id_field] is not None:
-                record[id_field] = str(record[id_field])
+        for name in to_string:
+            if name in record and record[name] is not None:
+                record[name] = str(record[name])
 
     logger.info(f"Loaded {len(records)} records")
     return records

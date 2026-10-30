@@ -114,8 +114,8 @@ python extract.py transform \
   --image-ref tool-a:1.0@sha256:... tool-b:2.0@sha256:...
 ```
 
-`transform` can also be called once per batch with `--start-row-num` to produce
-non-overlapping part files, which is the natural fit for a fan-out/fan-in workflow.
+`transform` can also be called once per batch to produce one part file per batch, which is
+the natural fit for a fan-out/fan-in workflow; PheBee reads a prefix of part files.
 
 ### 2. Python: implement `StageRunner`
 
@@ -196,17 +196,19 @@ digest lives only in the uploaded file, and the tag in `evidence_creator_id` is 
 provenance PheBee keeps; prefer immutable tags for imported runs. The field contract is in
 [README.md](README.md#creator-fields-and-evidence_creator_digest).
 
-## Ordering and `row_num`
+## `row_num` and `batch_id`
 
-PheBee records carry a `row_num`. Within one `transform` call it is a 1-based running count
-starting at `--start-row-num`. If you write part files per batch, choose offsets so they do
-not overlap (for example `batch_index * batch_size * max_annotations_per_note`, or run the
-batches' transforms sequentially and pass the previous `next_row_num` along). This tool only
-guarantees that values are increasing within one call; check what your importer expects
-(unique, dense, or neither) before relying on gaps between part files.
+Each PheBee record carries `row_num`, its 1-based line number within the file it is in. It
+is there so a record can be referred to ("line 57 of part 3"); PheBee's bulk import does not
+read it, so part files written independently may each start at 1 and nothing has to be
+coordinated between them.
+
+The output deliberately has no top-level `batch_id`: PheBee's import replaces that field
+with the name of the file the record came from, so a value written here would never survive.
 
 Records with an error, no subject identifier, or no annotations are skipped and counted
-(`transform.PheBeeWriteStats`), not written.
+(`transform.PheBeeWriteStats`), not written. A run in which no record at all has a subject
+fails rather than producing an empty file.
 
 ## Sketch: a cloud deployment
 

@@ -7,7 +7,7 @@ sees lives here, so the contract has a single home in the code.
 
 import json
 import os
-from typing import Any, Optional
+from typing import Any
 
 # Where the batch directory is mounted inside a stage container
 CONTAINER_DATA_DIR = "/data"
@@ -85,7 +85,7 @@ def merge_original_records(
 
 
 def merge_original_fields(
-    input_path: str, output_path: str, merged_path: Optional[str] = None
+    input_path: str, output_path: str, merged_path: str | None = None
 ) -> None:
     """
     File-level wrapper for merge_original_records.

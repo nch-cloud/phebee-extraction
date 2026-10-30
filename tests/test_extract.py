@@ -5,6 +5,7 @@ Tests individual functions without requiring Docker.
 """
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -145,6 +146,29 @@ def test_load_csv_custom_columns(tmp_path):
     assert len(records) == 2
     assert records[0]["note_id"] == "n1"
     assert records[0]["text"] == "Text 1"
+
+
+def test_load_converts_named_identifier_columns_to_strings(tmp_path):
+    """note_id and encounter_id always; the caller names the rest (subject column, others)"""
+    csv = tmp_path / "notes.csv"
+    csv.write_text("note_id,mrn,encounter_id,visit_no,text\n101,3520819,7,42,fever\n")
+
+    records = extract.load_input_data(str(csv), string_columns={"mrn"})
+
+    (r,) = records
+    assert r["note_id"] == "101" and r["mrn"] == "3520819" and r["encounter_id"] == "7"
+    assert r["visit_no"] == 42  # not named, left as the reader produced it
+
+
+def test_load_leaves_unnamed_numeric_columns_alone(tmp_path):
+    """No hidden list of organisation-specific column names"""
+    csv = tmp_path / "notes.csv"
+    csv.write_text("note_id,mrn,pat_id,text\n1,2,3,fever\n")
+
+    (r,) = extract.load_input_data(str(csv))
+
+    assert r["note_id"] == "1"
+    assert r["mrn"] == 2 and r["pat_id"] == 3
 
 
 def test_load_missing_file():
@@ -547,7 +571,7 @@ def test_aggregate_phebee_format(sample_batch_outputs, tmp_path):
     assert rec1["evidence"][0]["evidence_creator_digest"] == "sha256:abc123"
     assert rec1["evidence"][0]["contexts"]["negated"] is False
     assert rec1["row_num"] == 1
-    assert rec1["batch_id"] == 0
+    assert "batch_id" not in rec1  # PheBee derives batch_id from the file name itself
 
     # Check second record (different term, same subject)
     rec2 = json.loads(lines[1])
@@ -562,6 +586,75 @@ def test_aggregate_phebee_format(sample_batch_outputs, tmp_path):
     assert rec3["term_iri"] == "http://purl.obolibrary.org/obo/HP_0002315"
     assert rec3["evidence"][0]["contexts"]["family"] is True
     assert rec3["row_num"] == 3
+
+
+def test_aggregate_phebee_fails_when_no_note_has_a_subject(sample_batch_outputs, tmp_path):
+    """The 'Wrote 0 PheBee records' trap: a misconfigured subject column must fail, not succeed"""
+    for out in sample_batch_outputs:
+        for rec in out["records"]:
+            rec.pop("subject_id", None)
+            rec["annotations"] = [
+                {"start": 0, "end": 5, "text": "fever", "term_id": "HP:0001945", "label": "Fever"}
+            ]
+    ctx = extract.ExecutionContext(
+        input_file="test.json",
+        output_dir=str(tmp_path),
+        docker_images=["test:latest"],
+        batch_size=1000,
+        gpu=False,
+        temp_dir=str(tmp_path),
+        keep_temp=False,
+        continue_on_error=False,
+        docker_timeout=3600,
+        project_id="test-project",
+        subject_id_column="patient_id",
+        docker_image_digests=["test:latest@sha256:abc123"],
+    )
+    batch1 = extract.BatchInfo(1, "batch_000001", "", str(tmp_path / "b1_out.json"), 1, "success")
+    ctx.batches = [batch1]
+    with open(batch1.output_path, "w") as f:
+        json.dump(sample_batch_outputs[0], f)
+    output_file = tmp_path / "phebee.json"
+
+    with pytest.raises(extract.ExtractionError, match="patient_id.*--subject-id-column"):
+        extract.aggregate_results(ctx, str(output_file))
+    assert not output_file.exists()
+
+
+def test_aggregate_phebee_only_warns_when_some_notes_lack_a_subject(
+    sample_batch_outputs, tmp_path, caplog
+):
+    sample_batch_outputs[0]["records"][0]["subject_id"] = "subj-001"
+    sample_batch_outputs[0]["records"][0]["annotations"] = [
+        {"start": 0, "end": 5, "text": "fever", "term_id": "HP:0001945", "label": "Fever"}
+    ]
+    sample_batch_outputs[1]["records"][0].pop("subject_id", None)
+    ctx = extract.ExecutionContext(
+        input_file="test.json",
+        output_dir=str(tmp_path),
+        docker_images=["test:latest"],
+        batch_size=1000,
+        gpu=False,
+        temp_dir=str(tmp_path),
+        keep_temp=False,
+        continue_on_error=False,
+        docker_timeout=3600,
+        project_id="test-project",
+        docker_image_digests=["test:latest@sha256:abc123"],
+    )
+    b1 = extract.BatchInfo(1, "batch_000001", "", str(tmp_path / "b1_out.json"), 1, "success")
+    b2 = extract.BatchInfo(2, "batch_000002", "", str(tmp_path / "b2_out.json"), 1, "success")
+    ctx.batches = [b1, b2]
+    for b, out in zip((b1, b2), sample_batch_outputs, strict=False):
+        with open(b.output_path, "w") as f:
+            json.dump(out, f)
+    output_file = tmp_path / "phebee.json"
+
+    with caplog.at_level(logging.WARNING):
+        extract.aggregate_results(ctx, str(output_file))
+
+    assert output_file.exists() and len(output_file.read_text().splitlines()) == 1
+    assert "Skipped 1 notes without subject_id" in caplog.text
 
 
 # ============================================================================

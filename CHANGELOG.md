@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Python 3.11 or later is required (3.9 and 3.10 are end-of-life); CI covers 3.11 to 3.14.
+- Identifier columns converted to strings are now the ones you name, not a built-in list of
+  organisation-specific column names (`mrn`, `pat_id`, ...). `note_id`, `encounter_id` and the
+  `--subject-id-column` are always converted; `--string-columns` names any others. `split`
+  gained `--subject-id-column` so batch files carry a string subject.
+- `row_num` is now simply the 1-based line number within each output file, and the top-level
+  `batch_id` field and `--batch-id` flag are gone. Neither was used by PheBee's import (it never
+  reads `row_num` and overwrites `batch_id` with the source file name), so the machinery for
+  globally unique row numbers (`transform --start-row-num`) is removed too.
+- Development status is declared as Beta until the tool has been used outside its home
+  organisation.
+- A PheBee-format run in which no note has a subject now fails with an error naming
+  `--subject-id-column`, instead of succeeding with an empty output file.
+
 ## [1.0.0] - 2026-10-29
 
 First release. A lightweight, local alternative to the AWS PheBee extraction pipeline: it runs

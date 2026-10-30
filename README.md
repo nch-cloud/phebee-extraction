@@ -1,7 +1,7 @@
 # PheBee Extraction (Local)
 
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](LICENSE)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
 Lightweight, local alternative to the enterprise AWS PheBee extraction pipeline. Process clinical notes on a single machine without AWS infrastructure.
 
@@ -21,7 +21,7 @@ PheBee Extraction orchestrates Docker containers to extract phenotype annotation
 
 ### Prerequisites
 
-- Python 3.9+
+- Python 3.11+
 - Docker Engine 20.10+
 - NVIDIA Docker runtime (for GPU support)
 
@@ -131,7 +131,7 @@ Notes are listed in input order, and a note with no matches would still appear, 
 
 ### Basic Usage
 
-**PheBee format (default)** - Ready for PheBee bulk import. The input needs a subject identifier per note (`subject_id` by default, or name another column with `--subject-id-column`); notes without one are skipped:
+**PheBee format (default)** - Ready for PheBee bulk import. The input needs a subject identifier per note (`subject_id` by default, or name another column with `--subject-id-column`). Notes without one are skipped with a warning, and a run in which *no* note has one fails with an error naming the flag, rather than writing an empty file:
 
 ```bash
 # Single extraction tool
@@ -181,7 +181,6 @@ python extract.py \
 
 - `--flat-format`: Output note-centric format instead of PheBee format
 - `--subject-id-column`: Input column name for subject ID (default: subject_id)
-- `--batch-id`: PheBee batch identifier (default: 0)
 
 **Note on Provenance**: `evidence_creator_id` and `evidence_creator_name` are derived from the Docker image names and tags in the pipeline, and `evidence_creator_digest` from their SHA256 digests; chained tools are joined with `+` in pipeline order (e.g. `fasthpocr:latest+phenocontext:latest` and `sha256:abc...+sha256:def...`). PheBee stores the id and name but currently drops the digest, so use immutable tags for imported runs. See [Creator fields](#creator-fields-and-evidence_creator_digest) for the field contract.
 
@@ -194,6 +193,7 @@ python extract.py \
 - `--input-format`: Force format (auto|json|jsonl|parquet|csv)
 - `--id-column`: Column name for note IDs in CSV/Parquet (default: note_id)
 - `--text-column`: Column name for note text in CSV/Parquet (default: text)
+- `--string-columns`: Comma-separated input columns to convert to strings, for numeric identifiers a tool expects as text. `note_id`, `encounter_id` and the subject column are always converted
 - `--continue-on-error`: Continue if batch fails
 - `--docker-timeout`: Maximum seconds per batch stage (default: 3600)
 
@@ -220,7 +220,7 @@ python extract.py transform \
 `transform` notes:
 - `--original-input` merges fields the tool dropped (e.g. `subject_id`) back from the batch inputs; list one file per `--input`, in the same order.
 - `--image-ref` supplies the provenance that `run` captures automatically. Pass the full `name:tag@sha256:...` reference for each tool in pipeline order.
-- `--start-row-num` lets you write one part file per batch with non-overlapping `row_num` values.
+- Each output file's `row_num` is its 1-based line number. PheBee does not read it, so part files written separately may each start at 1.
 - `--flat-format` produces the note-centric format instead; `--project-id` is then not required.
 
 ### Reviewing Results
@@ -282,11 +282,11 @@ Use `--id-column` and `--text-column` to specify column names.
 Output is written as JSONL (`aggregated.json`) with one record per annotation, ready for PheBee bulk import:
 
 ```jsonl
-{"project_id": "my-project", "project_subject_id": "patient-001", "term_iri": "http://purl.obolibrary.org/obo/HP_0001945", "evidence": [{...}], "row_num": 1, "batch_id": 0}
-{"project_id": "my-project", "project_subject_id": "patient-001", "term_iri": "http://purl.obolibrary.org/obo/HP_0012735", "evidence": [{...}], "row_num": 2, "batch_id": 0}
+{"project_id": "my-project", "project_subject_id": "patient-001", "term_iri": "http://purl.obolibrary.org/obo/HP_0001945", "evidence": [{...}], "row_num": 1}
+{"project_id": "my-project", "project_subject_id": "patient-001", "term_iri": "http://purl.obolibrary.org/obo/HP_0012735", "evidence": [{...}], "row_num": 2}
 ```
 
-Each line represents one (subject, term) pair with associated evidence. Multiple annotations of the same term for the same subject appear on separate lines.
+Each line represents one (subject, term) pair with associated evidence. Multiple annotations of the same term for the same subject appear on separate lines. `row_num` is the line number within the file, for referring to a record; PheBee's import does not read it, and derives its own `batch_id` from the file name.
 
 The `contexts` object holds three boolean flags, `negated`, `family` and `hypothetical`, written as `true`/`false`. A missing flag is written as `false`. PheBee's bulk import reads exactly these three flags (it ignores any other context key, so they are not written) and treats `true`, `1` and `1.0` the same, so the boolean form does not change how evidence is identified. A context value that is not a recognisable flag, such as a score of `0.7`, causes that annotation to be skipped with a warning.
 
@@ -397,8 +397,8 @@ See [examples/](examples/) directory for:
 uv run pytest tests/ -v
 
 # Run specific test files
-uv run pytest tests/test_extract.py -v           # Unit tests (38 tests)
-uv run pytest tests/test_stages.py -v            # Runner / split / transform tests (23 tests)
+uv run pytest tests/test_extract.py -v           # Unit tests (42 tests)
+uv run pytest tests/test_stages.py -v            # Runner / split / transform tests (24 tests)
 uv run pytest tests/test_mock_context.py -v      # Mock context classifier on all sample data (33 tests)
 uv run pytest tests/test_review.py -v            # review command (12 tests)
 uv run pytest tests/test_context_flags.py -v     # Boolean context flags (30 tests)
@@ -432,9 +432,9 @@ phebee_extraction/        # Implementation, one module per pipeline stage
 pyproject.toml            # Project metadata and dependencies
 INTERFACE.md              # Docker container interface spec
 examples/                 # Sample data
-tests/                    # Unit and integration tests (148 tests)
-  test_extract.py         # Unit tests (38 tests)
-  test_stages.py          # Runner protocol, split, transform (23 tests, no Docker)
+tests/                    # Unit and integration tests (153 tests)
+  test_extract.py         # Unit tests (42 tests)
+  test_stages.py          # Runner protocol, split, transform (24 tests, no Docker)
   test_mock_context.py    # Mock context classifier vs. expected flags (33 tests, no Docker)
   context_cases.py        # Expected context flags for every sample note
   test_review.py          # review command (12 tests, no Docker)
