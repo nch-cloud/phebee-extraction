@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- Require `certifi>=2026.10.19`, the first release without the compromised eMudhra/emSign
+  root certificates (October 2026 CA incident); the lockfile moves to 2026.10.23. certifi is
+  transitive here (`docker` → `requests`), so installations that resolve this package's
+  dependencies now get a safe bundle. Existing environments: `uv sync` or
+  `pip install --upgrade certifi`.
+- The mock tool images build on `python:3.12-slim`; Python 3.10 is end-of-life and receives
+  no fix for the incident.
+
 ## [1.0.0] - 2026-10-30
 
 First release. A lightweight, local alternative to the AWS PheBee extraction pipeline: it runs

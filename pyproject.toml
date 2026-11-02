@@ -25,6 +25,9 @@ dependencies = [
     "pandas>=2.0.0",
     "tqdm>=4.65.0",
     "pyarrow>=12.0.0",
+    # certifi is transitive (docker -> requests). The floor excludes bundles carrying the
+    # compromised eMudhra/emSign roots (October 2026 incident).
+    "certifi>=2026.10.19",
 ]
 
 [dependency-groups]
