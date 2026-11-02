@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
   transitive here (`docker` → `requests`), so installations that resolve this package's
   dependencies now get a safe bundle. Existing environments: `uv sync` or
   `pip install --upgrade certifi`.
+- Require `urllib3>=2.8.0` (PYSEC-2026-4175, -4176, -4177); also transitive via `requests`.
+  The lockfile moves from 2.7.0 to 2.8.0.
 - The mock tool images build on `python:3.12-slim`; Python 3.10 is end-of-life and receives
   no fix for the incident.
 
