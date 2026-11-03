@@ -1,6 +1,6 @@
 [project]
 name = "phebee-extraction"
-version = "1.0.0"
+version = "1.0.1"
 description = "Lightweight local extraction pipeline for clinical phenotypes"
 readme = "README.md"
 requires-python = ">=3.11"

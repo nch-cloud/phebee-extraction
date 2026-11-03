@@ -247,13 +247,13 @@ def test_run_single_stage_mounts_an_absolute_host_path(tmp_path, monkeypatch):
     assert env["INPUT_URI"] == "/data/batch_000001_input.json"
 
 
-REAL_NAME = "ods/phebee-clinphen:batch-v1.0.0_clinphen-1.28_hpo-v2025-10-22_c58cc41"
+REAL_NAME = "tools/clinphen:batch-v1.0.0_clinphen-1.28_hpo-v2025-10-22_c58cc41"
 
 
 def test_image_reference_keeps_tag_and_takes_registry_digest():
     """The tag carries version info and must survive; RepoDigests only supplies the digest"""
     ref = image_reference_with_digest(
-        REAL_NAME, ["ods/phebee-clinphen@sha256:aaa"], "sha256:imageid"
+        REAL_NAME, ["tools/clinphen@sha256:aaa"], "sha256:imageid"
     )
     assert ref == f"{REAL_NAME}@sha256:aaa"
 
@@ -299,7 +299,7 @@ def test_image_reference_without_any_digest_is_the_bare_name():
 
 def test_creator_fields_keep_the_full_tag():
     """End to end through the creator fields: a tagged real-world name is preserved"""
-    ref = image_reference_with_digest(REAL_NAME, ["ods/phebee-clinphen@sha256:aaa"], None)
+    ref = image_reference_with_digest(REAL_NAME, ["tools/clinphen@sha256:aaa"], None)
     fields = evidence_creator_fields([ref])
     assert fields["evidence_creator_id"] == REAL_NAME
     assert fields["evidence_creator_name"] == REAL_NAME
@@ -484,3 +484,45 @@ def test_no_subcommand_defaults_to_run():
     with pytest.raises(SystemExit) as exc:
         cli.main(["--help"])
     assert exc.value.code == 0
+
+
+def test_transform_phebee_note_timestamp_column(tmp_path, tool_output):
+    """--note-timestamp-column names the input column holding the note's clinical date"""
+    note_id = tool_output["records"][0]["note_id"]
+    original = tmp_path / "orig.json"
+    with open(original, "w") as f:
+        json.dump(
+            {
+                "records": [
+                    {
+                        "note_id": note_id,
+                        "text": "x",
+                        "subject_id": "subj-9",
+                        "note_date": "2024-03-04 05:06:07",
+                    }
+                ]
+            },
+            f,
+        )
+    out = tmp_path / "part.jsonl"
+
+    rc = cli.main(
+        [
+            "transform",
+            "--input",
+            str(FIXTURES / "sample_output.json"),
+            "--original-input",
+            str(original),
+            "--output",
+            str(out),
+            "--project-id",
+            "proj",
+            "--image-ref",
+            "tool:1@sha256:abc",
+            "--note-timestamp-column",
+            "note_date",
+        ]
+    )
+    assert rc == 0
+    first = json.loads(out.read_text().splitlines()[0])
+    assert first["evidence"][0]["note_timestamp"] == "2024-03-04 05:06:07"
