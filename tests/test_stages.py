@@ -252,9 +252,7 @@ REAL_NAME = "tools/clinphen:batch-v1.0.0_clinphen-1.28_hpo-v2025-10-22_c58cc41"
 
 def test_image_reference_keeps_tag_and_takes_registry_digest():
     """The tag carries version info and must survive; RepoDigests only supplies the digest"""
-    ref = image_reference_with_digest(
-        REAL_NAME, ["tools/clinphen@sha256:aaa"], "sha256:imageid"
-    )
+    ref = image_reference_with_digest(REAL_NAME, ["tools/clinphen@sha256:aaa"], "sha256:imageid")
     assert ref == f"{REAL_NAME}@sha256:aaa"
 
 
