@@ -8,6 +8,7 @@ can be reused by other orchestrators.
 
 import json
 import logging
+import math
 import os
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -26,6 +27,10 @@ class PheBeeConfig:
 
     project_id: str
     subject_id_column: str = "subject_id"
+    # Input column holding the note's clinical date. PheBee's note_timestamp means "when the
+    # phenotype was observed and written into a note"; with no value it is written as null,
+    # never invented.
+    note_timestamp_column: str = "note_timestamp"
     # Image references for the tools that produced the annotations, in pipeline order.
     # Each is "name[:tag]" optionally followed by "@sha256:..." (see validate_docker_images).
     image_refs: list[str] = field(default_factory=list)
@@ -39,6 +44,7 @@ class PheBeeWriteStats:
     records_seen: int = 0  # records without a tool error
     skipped_no_subject: int = 0
     skipped_no_annotations: int = 0
+    missing_note_timestamp: int = 0  # notes written with note_timestamp null
 
 
 def term_id_to_iri(term_id: str) -> str:
@@ -130,6 +136,29 @@ def evidence_creator_fields(image_refs: list[str]) -> dict[str, str | None]:
     }
 
 
+def metadata_value(value: Any) -> Any:
+    """
+    A note metadata value as it should appear in JSON.
+
+    Tabular inputs (CSV, Parquet) come through pandas, where an empty cell is NaN and a date
+    column is a Timestamp. NaN is not valid JSON and a Timestamp is not serialisable, so both
+    are normalised here: NaN (and NaT) to None, datetimes to ISO 8601 strings. Everything else
+    passes through unchanged.
+    """
+    if value is None:
+        return None
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    if hasattr(value, "isoformat"):  # datetime, date, pandas Timestamp
+        try:
+            if value != value:  # NaT compares unequal to itself
+                return None
+        except TypeError:
+            pass
+        return value.isoformat()
+    return value
+
+
 def _annotation_span(annotation: dict[str, Any]):
     """Return (start, end) supporting several field-name variants, or (None, None)"""
     # Use explicit None checks to handle start=0 correctly
@@ -164,10 +193,12 @@ def record_to_phebee_format(record: dict[str, Any], config: PheBeeConfig) -> lis
 
     # Get note metadata
     note_id = record["note_id"]
-    encounter_id = record.get("encounter_id", note_id)
-    note_timestamp = record.get("note_timestamp")
-    if not note_timestamp:
-        note_timestamp = datetime.now().strftime("%Y-%m-%d")
+    encounter_id = metadata_value(record.get("encounter_id"))
+    if encounter_id is None:
+        encounter_id = note_id
+    note_timestamp = metadata_value(record.get(config.note_timestamp_column))
+    if note_timestamp == "":
+        note_timestamp = None
 
     # Process each annotation
     annotations = record.get("annotations", [])
@@ -206,9 +237,9 @@ def record_to_phebee_format(record: dict[str, Any], config: PheBeeConfig) -> lis
             "encounter_id": encounter_id,
             **creator_fields,
             "note_timestamp": note_timestamp,
-            "note_type": record.get("note_type"),
-            "provider_type": record.get("provider_type"),
-            "author_specialty": record.get("author_specialty"),
+            "note_type": metadata_value(record.get("note_type")),
+            "provider_type": metadata_value(record.get("provider_type")),
+            "author_specialty": metadata_value(record.get("author_specialty")),
             "span_start": int(span_start),
             "span_end": int(span_end),
             "contexts": flags,
@@ -257,11 +288,14 @@ def write_phebee_records(
             stats.skipped_no_annotations += 1
             continue
 
+        if metadata_value(record.get(config.note_timestamp_column)) in (None, ""):
+            stats.missing_note_timestamp += 1
+
         # Transform to PheBee format (one record per annotation)
         for phebee_record in record_to_phebee_format(record, config):
             stats.records_written += 1
             phebee_record["row_num"] = stats.records_written
-            fh.write(json.dumps(phebee_record) + "\n")
+            fh.write(json.dumps(phebee_record, allow_nan=False) + "\n")
 
     return stats
 
@@ -294,6 +328,13 @@ def write_phebee_jsonl(
         )
     if totals.skipped_no_annotations > 0:
         logger.info(f"Skipped {totals.skipped_no_annotations} notes with no annotations")
+    if totals.missing_note_timestamp > 0:
+        logger.warning(
+            f"{totals.missing_note_timestamp} of {totals.records_seen} notes have no value in "
+            f"{config.note_timestamp_column!r}; their note_timestamp (the clinical date) is "
+            "written as null. If the note date is in another column, pass "
+            "--note-timestamp-column."
+        )
 
     return totals
 

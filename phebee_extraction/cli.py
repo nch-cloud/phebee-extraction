@@ -107,6 +107,12 @@ def _add_phebee_output_arguments(parser: argparse.ArgumentParser) -> None:
         default="subject_id",
         help="Input column name for subject ID (default: subject_id)",
     )
+    parser.add_argument(
+        "--note-timestamp-column",
+        default="note_timestamp",
+        help="Input column holding the note's clinical date, written as PheBee's "
+        "note_timestamp; null when the note has no value (default: note_timestamp)",
+    )
 
 
 def _validate_phebee_output_arguments(parser: argparse.ArgumentParser, args) -> None:
@@ -221,6 +227,7 @@ def run_command(args: argparse.Namespace) -> int:
         flat_format=args.flat_format,
         project_id=args.project_id,
         subject_id_column=args.subject_id_column,
+        note_timestamp_column=args.note_timestamp_column,
     )
 
     # Initialize the stage runner (local Docker)
@@ -384,6 +391,7 @@ def transform_command(args: argparse.Namespace) -> int:
         config = PheBeeConfig(
             project_id=args.project_id,
             subject_id_column=args.subject_id_column,
+            note_timestamp_column=args.note_timestamp_column,
             image_refs=args.image_ref,
         )
         write_phebee_jsonl(outputs, config, args.output)

@@ -41,6 +41,7 @@ class ExecutionContext:
     flat_format: bool = False
     project_id: str | None = None
     subject_id_column: str = "subject_id"
+    note_timestamp_column: str = "note_timestamp"
     docker_image_digests: list[str] = field(default_factory=list)
 
     # Runtime state
@@ -65,6 +66,7 @@ class ExecutionContext:
         return PheBeeConfig(
             project_id=self.project_id,
             subject_id_column=self.subject_id_column,
+            note_timestamp_column=self.note_timestamp_column,
             image_refs=self.docker_image_digests,
         )
 

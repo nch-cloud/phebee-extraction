@@ -52,17 +52,17 @@ Other projects (for example an orchestrator for a cloud or cluster, see [ARCHITE
 
 ```bash
 # pip
-pip install "phebee-extraction @ git+https://github.com/nch-cloud/phebee-extraction.git@v1.0.0"
+pip install "phebee-extraction @ git+https://github.com/nch-cloud/phebee-extraction.git@v1.0.1"
 
 # uv
-uv add "git+https://github.com/nch-cloud/phebee-extraction.git" --tag v1.0.0
+uv add "git+https://github.com/nch-cloud/phebee-extraction.git" --tag v1.0.1
 ```
 
 Or in `pyproject.toml`:
 
 ```toml
 dependencies = [
-  "phebee-extraction @ git+https://github.com/nch-cloud/phebee-extraction.git@v1.0.0",
+  "phebee-extraction @ git+https://github.com/nch-cloud/phebee-extraction.git@v1.0.1",
 ]
 ```
 
@@ -131,7 +131,7 @@ Notes are listed in input order, and a note with no matches would still appear, 
 
 ### Basic Usage
 
-**PheBee format (default)** - Ready for PheBee bulk import. The input needs a subject identifier per note (`subject_id` by default, or name another column with `--subject-id-column`). Notes without one are skipped with a warning, and a run in which *no* note has one fails with an error naming the flag, rather than writing an empty file:
+**PheBee format (default)** - Ready for PheBee bulk import. The input needs a subject identifier per note (`subject_id` by default, or name another column with `--subject-id-column`). Notes without one are skipped with a warning, and a run in which *no* note has one fails with an error naming the flag, rather than writing an empty file. The note's clinical date is taken from `note_timestamp`, or the column named with `--note-timestamp-column`; a note without one gets `null`, with a warning, because PheBee treats that field as the observation date and an invented one would be wrong:
 
 ```bash
 # Single extraction tool
@@ -181,6 +181,7 @@ python extract.py \
 
 - `--flat-format`: Output note-centric format instead of PheBee format
 - `--subject-id-column`: Input column name for subject ID (default: subject_id)
+- `--note-timestamp-column`: Input column holding the note's clinical date, written as PheBee's `note_timestamp`; `null` when a note has no value (default: note_timestamp)
 
 **Note on Provenance**: `evidence_creator_id` and `evidence_creator_name` are derived from the Docker image names and tags in the pipeline, and `evidence_creator_digest` from their SHA256 digests; chained tools are joined with `+` in pipeline order (e.g. `fasthpocr:latest+phenocontext:latest` and `sha256:abc...+sha256:def...`). PheBee stores the id and name but currently drops the digest, so use immutable tags for imported runs. See [Creator fields](#creator-fields-and-evidence_creator_digest) for the field contract.
 
@@ -309,7 +310,7 @@ Each evidence item carries four creator fields, all derived from the Docker imag
 
 **PheBee does not store this field yet.** Bulk import accepts the record and drops the field: the evidence table's `creator` struct holds only `creator_id`, `creator_type` and `creator_name`. The name follows PheBee's `evidence_creator_*` → `creator_*` convention so that a future `creator_digest` column can read it without any change here. Until then, two practical consequences:
 
-- Use **immutable tags** for anything you import. With `clinphen:latest`, PheBee records only `clinphen:latest`, and two imports from different builds of `latest` are indistinguishable in the table. A tag like `ods/phebee-clinphen:batch-v1.0.0_clinphen-1.28_hpo-v2025-10-22_c58cc41` identifies the build by itself.
+- Use **immutable tags** for anything you import. With `clinphen:latest`, PheBee records only `clinphen:latest`, and two imports from different builds of `latest` are indistinguishable in the table. A tag like `tools/clinphen:1.28_hpo-2025-10-22_c58cc41` identifies the build by itself.
 - **Keep the uploaded file.** It is the only place the digest is recorded for that run.
 
 ### Flat Format (--flat-format)

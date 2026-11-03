@@ -84,8 +84,13 @@ def load_input_data(
         # Convert ID columns to strings (they may be numeric in tabular formats)
         df[id_column] = df[id_column].astype(str)
 
-        # Convert to records, renaming columns if needed
+        # Convert to records, renaming columns if needed. Empty cells are NaN in pandas and
+        # date columns are Timestamps; neither belongs in JSON, so they become None and
+        # ISO 8601 strings here, once, at the source.
         df = df.rename(columns={id_column: "note_id", text_column: "text"})
+        for column in df.select_dtypes(include=["datetime", "datetimetz"]).columns:
+            df[column] = df[column].map(lambda v: None if pd.isna(v) else v.isoformat())
+        df = df.astype(object).where(pd.notna(df), None)
         records = df.to_dict("records")
 
     else:

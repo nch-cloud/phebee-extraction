@@ -929,3 +929,122 @@ def test_execution_context_helpers():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# ============================================================================
+# Note metadata: null, not NaN or an invented date
+# ============================================================================
+
+
+def _phebee_lines(tmp_path, records, **config):
+    from phebee_extraction.transform import PheBeeConfig, write_phebee_jsonl
+
+    out = tmp_path / "out.json"
+    stats = write_phebee_jsonl(
+        [{"records": records, "run_metadata": {}}],
+        PheBeeConfig(project_id="proj", image_refs=["tool:1@sha256:a"], **config),
+        str(out),
+    )
+    text = out.read_text()
+    return [json.loads(line) for line in text.splitlines()], text, stats
+
+
+def _note(**fields):
+    base = {
+        "note_id": "n1",
+        "subject_id": "s1",
+        "text": "Has fever.",
+        "annotations": [
+            {"start": 4, "end": 9, "text": "fever", "term_id": "HP:0001945", "label": "Fever"}
+        ],
+        "error": None,
+    }
+    base.update(fields)
+    return base
+
+
+def test_phebee_note_timestamp_is_null_when_the_note_has_none(tmp_path, caplog):
+    """PheBee's note_timestamp is the clinical date; with no value it is null, not today"""
+    with caplog.at_level(logging.WARNING):
+        lines, text, stats = _phebee_lines(tmp_path, [_note()])
+    assert lines[0]["evidence"][0]["note_timestamp"] is None
+    assert stats.missing_note_timestamp == 1
+    assert "--note-timestamp-column" in caplog.text
+
+
+def test_phebee_note_timestamp_comes_from_the_named_column(tmp_path, caplog):
+    with caplog.at_level(logging.WARNING):
+        lines, _, stats = _phebee_lines(
+            tmp_path,
+            [_note(note_date="2024-03-04 05:06:07")],
+            note_timestamp_column="note_date",
+        )
+    assert lines[0]["evidence"][0]["note_timestamp"] == "2024-03-04 05:06:07"
+    assert stats.missing_note_timestamp == 0
+    assert "note_timestamp" not in caplog.text
+
+
+def test_phebee_note_timestamp_default_column_still_works(tmp_path):
+    lines, _, _ = _phebee_lines(tmp_path, [_note(note_timestamp="2024-03-04")])
+    assert lines[0]["evidence"][0]["note_timestamp"] == "2024-03-04"
+
+
+def test_phebee_metadata_nan_becomes_null(tmp_path):
+    """An empty CSV cell reaches the transform as NaN; the output must be valid JSON"""
+    nan = float("nan")
+    lines, text, _ = _phebee_lines(
+        tmp_path,
+        [_note(author_specialty=nan, note_type=nan, provider_type=None, note_timestamp=nan)],
+    )
+    ev = lines[0]["evidence"][0]
+    assert ev["author_specialty"] is None
+    assert ev["note_type"] is None
+    assert ev["note_timestamp"] is None
+    assert "NaN" not in text
+    json.loads(text.splitlines()[0])  # strict: would fail on a NaN literal
+
+
+def test_phebee_metadata_datetime_becomes_iso_string(tmp_path):
+    from datetime import datetime
+
+    lines, text, _ = _phebee_lines(tmp_path, [_note(note_timestamp=datetime(2024, 3, 4, 5, 6, 7))])
+    assert lines[0]["evidence"][0]["note_timestamp"] == "2024-03-04T05:06:07"
+
+
+def test_phebee_encounter_id_nan_falls_back_to_note_id(tmp_path):
+    lines, _, _ = _phebee_lines(tmp_path, [_note(encounter_id=float("nan"))])
+    assert lines[0]["evidence"][0]["encounter_id"] == "n1"
+
+
+def test_load_csv_empty_cells_become_none_not_nan(tmp_path):
+    csv_path = tmp_path / "notes.csv"
+    csv_path.write_text(
+        "note_id,subject_id,text,note_date,author_specialty\n"
+        "n1,s1,Has fever.,2024-03-04 05:06:07,\n"
+        "n2,s1,Has cough.,,Neurology\n"
+    )
+    records = extract.load_input_data(str(csv_path))
+    assert records[0]["author_specialty"] is None
+    assert records[1]["note_date"] is None
+    assert records[0]["note_date"] == "2024-03-04 05:06:07"  # strings pass through unchanged
+    json.dumps(records, allow_nan=False)  # nothing left that JSON cannot carry
+
+
+def test_load_parquet_dates_become_iso_strings(tmp_path):
+    import pandas as pd
+
+    path = tmp_path / "notes.parquet"
+    pd.DataFrame(
+        {
+            "note_id": ["n1", "n2"],
+            "subject_id": ["s1", "s1"],
+            "text": ["Has fever.", "Has cough."],
+            "note_date": [pd.Timestamp("2024-03-04 05:06:07"), pd.NaT],
+            "author_specialty": ["Neurology", None],
+        }
+    ).to_parquet(path)
+    records = extract.load_input_data(str(path))
+    assert records[0]["note_date"] == "2024-03-04T05:06:07"
+    assert records[1]["note_date"] is None
+    assert records[1]["author_specialty"] is None
+    json.dumps(records, allow_nan=False)

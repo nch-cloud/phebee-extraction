@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-03
+
+### Fixed
+
+- `note_timestamp` was the date the pipeline ran whenever the input had no `note_timestamp`
+  column, so every evidence row imported into PheBee carried the run date as its clinical
+  date. It is now `null` when a note has no value (PheBee's documented meaning: the clinical
+  observation date, absent if unknown), with a warning naming the new
+  `--note-timestamp-column` option, which selects the input column that holds the date (for
+  example `note_date`).
+- Empty cells in CSV and Parquet input became the JSON literal `NaN` in the output, which is
+  not valid JSON (PheBee's Spark reader tolerated it; stricter readers would not). They are
+  now `null`, and date-typed Parquet columns become ISO 8601 strings. The writer refuses to
+  emit `NaN` at all.
+
 ### Security
 
 - Require `certifi>=2026.10.19`, the first release without the compromised eMudhra/emSign
